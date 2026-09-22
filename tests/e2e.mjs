@@ -39,19 +39,41 @@ const future = Array.from({ length: 15 }, (_, index) => {
   };
 });
 const m2 = {
+  m2_id: "m2-e2e",
   version: "quota-forecast-v2-m2-live-v2",
   status: "approximate",
   strict_status: "infeasible",
+  quote_ready: true,
+  models: ["gpt-example"],
+  evidence: { request_count: 12, period_count: 1, raw_observation_count: 29, compressed_observation_count: 29 },
+  candidates: [{ alignment_offset_seconds: -120, status: "approximate" }, { alignment_offset_seconds: 0, status: "approximate" }, { alignment_offset_seconds: 120, status: "approximate" }],
   fit_error: { max_constraint_slack_pp: 0.35 },
   current_cycle: {
+    status: "approximate",
+    period_start: start.toISOString(),
+    through: now.toISOString(),
     current: {
       time: now.toISOString(),
-      actual_used_pp: 33.55,
-      explained_used_pp: 33.61,
-      explained_lower_pp: 33.55,
-      explained_upper_pp: 33.61,
+      actual_used_pp: 23.55,
+      explained_used_pp: 23.61,
+      explained_lower_pp: 23.55,
+      explained_upper_pp: 23.61,
+      observed_cycle_used_pp: 33.55,
+      explained_cycle_used_pp: 33.61,
+      explained_cycle_lower_pp: 33.55,
+      explained_cycle_upper_pp: 33.61,
       fit_residual_pp: -0.06,
     },
+    points: actual.map((point, index) => ({
+      time: point.time,
+      actual_used_pp: point.used_percent - 10,
+      observed_cycle_used_pp: point.used_percent,
+      explained_used_pp: point.used_percent - 10 + 0.06,
+      explained_cycle_used_pp: point.used_percent + 0.06,
+      explained_cycle_lower_pp: point.used_percent,
+      explained_cycle_upper_pp: point.used_percent + 0.06,
+      fit_residual_pp: -0.06,
+    })),
   },
   model_parameters: [{
     model: "gpt-example",
@@ -75,23 +97,11 @@ const adaptive = {
   },
   actual,
   boundaries: [],
-};
-const taskForecast = {
-  status: "conditional",
-  issued_at: now.toISOString(),
-  as_of: now.toISOString(),
-  reset_at: reset.toISOString(),
-  points: future.map(point => ({
-    time: point.time,
-    median: point.expected_used_pp,
-    lower: point.compatibility_used_pp.lower_used_pp,
-    upper: point.compatibility_used_pp.upper_used_pp,
-  })),
-  tasks: [],
-  minute_history: [],
-  thread_distribution: { status: "unavailable", coverage: "unavailable", points: [] },
-  scheduled: { jobs: [] },
-  warning: "合成验收夹具；不是预测精度证据。",
+  target: { mix: { "gpt-example|standard": 1 }, cache_ratio: 0.25 },
+  day_summary: { native_requests: 12, input_tokens: 120000, cached_input_tokens: 30000, output_tokens: 9000, cache_rate: 0.25 },
+  model_rows: [{ model: "gpt-example", native_requests: 12, input_tokens: 120000, cached_input_tokens: 30000, output_tokens: 9000, cache_ratio: 0.25, tiers: ["standard"] }],
+  daily_usage: [{ day: now.toISOString().slice(0, 10), input_tokens: 120000, cached_input_tokens: 30000, output_tokens: 9000 }],
+  hourly_usage: [{ hour: now.toISOString(), model: "gpt-example", total_tokens: 129000 }],
 };
 const snapshot = {
   schema: "codex-quota-system-snapshot-v1",
@@ -101,9 +111,8 @@ const snapshot = {
   timezone: "UTC",
   system_state: "locally_validated",
   runtime: { monitoring_enabled: true, local_fitting_enabled: true, bootstrap_mode: "bundled", retention_days: 35 },
-  forecast_v2: { m1: adaptive, m2, m3: { status: "conditional", reference_source: "local_m2_explanation", points: future } },
+  forecast_v2: { m1: adaptive, m2, m3: { status: "conditional", reference_source: "local_m2_explanation", reference_id: "m2-e2e", input_cutoff: now.toISOString(), workload_window: { request_count: 12, lookback_minutes: 120, models: [{ model: "gpt-example", tokens_per_wall_minute: { uncached_input: 750, cached_input: 250, output: 75 } }] }, points: future } },
   adaptive,
-  task_forecast: taskForecast,
 };
 await writeFile(path.join(stateDir, "snapshot.json"), JSON.stringify(snapshot), "utf8");
 await writeFile(
@@ -171,10 +180,11 @@ try {
 
   await page.locator("#rangePreset").selectOption("24h");
   await page.locator("#quotaRangeSummary").filter({ hasText: /—/ }).waitFor();
-  await page.getByRole("button", { name: "说明与边界" }).click();
-  await page.locator("#view-details:not(.hidden)").waitFor();
-  assert.equal(await page.locator("#detailMode").innerText(), "本地解释已采用");
-  assert.match(await page.locator("#m2ParameterRows").innerText(), /gpt-example/);
+  await page.getByRole("button", { name: "Codex 详情" }).click();
+  await page.locator("#view-usage:not(.hidden)").waitFor();
+  assert.equal(await page.locator("#resetExpected").innerText(), "33.61 百分点（对齐 33.55–33.61）");
+  assert.match(await page.locator("#calibrationRows").innerText(), /GPT-example/);
+  assert.equal(await page.locator("#resetAccountingChart canvas").count(), 1);
 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.getByRole("button", { name: "额度走势" }).click();
@@ -187,6 +197,8 @@ try {
   if (process.env.SCREENSHOT) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole("button", { name: "额度走势" }).click();
+    await page.locator("#rangePreset").selectOption("7d");
+    await page.waitForTimeout(300);
     await page.locator("#runtimeDetails").evaluate(element => { element.open = false; });
     await page.waitForTimeout(200);
     await page.screenshot({ path: process.env.SCREENSHOT, fullPage: true });

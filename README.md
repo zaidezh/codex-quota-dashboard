@@ -43,10 +43,18 @@ flowchart LR
   M2 --> P
   M3 --> P
   P --> W[loopback Web 页面]
+  P --> A[宿主薄适配层]
+  A --> W
 ~~~
 
 拟合不在 HTTP 请求中同步执行。Web 服务只读取最近一次成功冻结的快照；
 采集或求解失败时，旧快照仍可读，失败不会被静默包装为新结果。
+
+仓库同时发布可安装的 `codex_quota_dashboard` Python 包。算法入口、启动参考和
+Web 静态资源都由该包导出；需要把额度能力组合进现有监控台时，宿主只负责提供
+本地证据库、配置和静态输出目录，不复制算法或页面源码。开发环境可使用 editable
+安装，稳定环境应固定精确版本或提交，并通过包版本与静态资源身份哈希核对实际
+加载结果。
 
 ## 算法口径
 
@@ -77,6 +85,10 @@ M2 为每个模型拟合三个非负通道：
 本地 M2 至少需要同一额度周期内两个压缩观测，并出现可见额度变化。单个观测
 或未变化的平台只能形成 `insufficient_evidence`，不会把退化的全零参数晋升为
 本地解释；若操作者已显式启用启动参考，M3 在此阶段使用该只读参考。
+
+若监控在额度周期中途开始，首个服务器观测作为周期已用量锚点，M2 参数解释
+锚点之后的增量。当前解释扣量由“锚点已用量 + 解释增量”得到；增量残差仍
+单独保留，锚点不会被包装成模型预测。
 
 ### M3：条件额度走势
 
@@ -144,6 +156,18 @@ codex-quota-system --config .\config.toml run
 保守边界，使无本地观测历史的冷启动环境在获得当前额度观测与近期工作负载后
 可以先形成条件走势。它不替代本地 M2 解释和时间外验证。
 
+启动参考自身定义一个归一化容量单位 `1×`。操作者通过有限正数
+`capacity_multiplier` 声明目标容量，参考系数及边界按“参考容量 / 目标容量”
+缩放；`1`、`10`、`20` 和其他自定义数值使用同一算法。系统不根据套餐名称
+静默猜测容量倍数。本地 M2 一旦形成有限解释，就直接反映目标账户的实际额度
+百分点并自动接管 M3，不再应用启动倍数。
+
+~~~toml
+[bootstrap_reference]
+mode = "bundled"
+capacity_multiplier = 1.0
+~~~
+
 该资产只含模型、token 通道、单位、粗化参考值、扩大后的边界、用途和许可。
 完整字段、SHA-256、派生方法和限制见
 [Bootstrap reference contract](docs/BOOTSTRAP_REFERENCE.md)。
@@ -164,6 +188,7 @@ codex-quota-system --config .\config.toml purge-local-state --yes
 | GET | /api/dashboard | M1、M2、M3 与 UI 投影 |
 | GET | /api/quota/history | 当前冻结快照中的额度历史范围 |
 | GET | /api/quota/runtime | 聚合边界；不公开线程身份 |
+| POST | /api/forecast-v2/m2/quote | 使用当前冻结 M2 参数估算显式输入的 token 组合 |
 
 /healthz 证明服务和冻结快照可读，不证明预测准确、数据完整或外部业务成功。
 
@@ -188,8 +213,9 @@ npm run test:e2e
 ~~~
 
 发布验收覆盖配置默认值、启动参考校验、M2 严格/近似状态、M3 参数来源、
-增量采集、原子冻结、HTTP 安全头、键盘操作、320 px 回流和重置前七天默认
-视图。隔离安装与拟合基准见 [Validation](docs/VALIDATION.md)。
+1×/10×/20×/自定义容量缩放、本地 M2 自动接管、增量采集、原子冻结、宿主
+同构接入、HTTP 安全头、键盘操作、320 px 回流、完整 Codex 详情和重置前七天
+默认视图。隔离安装与拟合基准见 [Validation](docs/VALIDATION.md)。
 
 ## 许可
 
@@ -207,5 +233,7 @@ Codex Quota System is a local-first M1-M2-M3 pipeline for explicit evidence
 collection, approximate quota-consumption explanation, and conditional quota
 projection. Monitoring, local fitting, and bootstrap use are disabled by
 default and separately enabled. The bundled bootstrap asset is reference-only;
-finite local M2 explanations take priority. Project-authored material is
-licensed under Apache-2.0 and may be used commercially subject to the license.
+its numeric capacity scale is explicit and finite local M2 explanations take
+priority. The installable package exposes the same algorithms and Web assets to
+standalone and embedded deployments. Project-authored material is licensed
+under Apache-2.0 and may be used commercially subject to the license.

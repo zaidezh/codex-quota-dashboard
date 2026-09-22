@@ -88,7 +88,7 @@ def validate_workload_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     if result.get("schema_version") != 1:
         _fail("schema_version", "必须为 1")
     _nonempty(result.get("plan_id"), "plan_id")
-    if result.get("mode") not in ("declared_scenario", "observed_task_forecast"):
+    if result.get("mode") not in ("declared_scenario", "observed_workload_projection"):
         _fail("mode", "不是受支持的场景模式")
     if result.get("scope_merge") not in (
         "replaces_declared_scope",

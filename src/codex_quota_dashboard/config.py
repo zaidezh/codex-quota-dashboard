@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import math
 import os
 import tomllib
 
@@ -18,6 +19,7 @@ class StateConfig:
 class BootstrapReferenceConfig:
     mode: str = "off"
     path: Path | None = None
+    capacity_multiplier: float = 1.0
 
 
 @dataclass(slots=True)
@@ -90,6 +92,13 @@ def _bounded_float(value: object, name: str, default: float, minimum: float, max
     return number
 
 
+def _positive_float(value: object, name: str, default: float) -> float:
+    number = float(default if value is None else value)
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{name} must be a finite positive number")
+    return number
+
+
 def load_config(path: str | os.PathLike[str]) -> SystemConfig:
     config_path = Path(path).resolve()
     with config_path.open("rb") as handle:
@@ -108,7 +117,15 @@ def load_config(path: str | os.PathLike[str]) -> SystemConfig:
     mode = str(bootstrap_raw.get("mode") or "off").strip().lower()
     if mode not in {"off", "bundled", "path"}:
         raise ValueError("bootstrap_reference.mode must be off, bundled, or path")
-    bootstrap = BootstrapReferenceConfig(mode=mode, path=_path(bootstrap_raw.get("path"), base))
+    bootstrap = BootstrapReferenceConfig(
+        mode=mode,
+        path=_path(bootstrap_raw.get("path"), base),
+        capacity_multiplier=_positive_float(
+            bootstrap_raw.get("capacity_multiplier"),
+            "bootstrap_reference.capacity_multiplier",
+            1.0,
+        ),
+    )
     if mode == "path" and bootstrap.path is None:
         raise ValueError("bootstrap_reference.path is required when mode=path")
 

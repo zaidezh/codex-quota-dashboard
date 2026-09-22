@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta name="codex-ui-version" content="quota-system-v20">
+  <meta name="codex-ui-version" content="quota-system-v31">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#11171e">
   <meta name="color-scheme" content="dark">
   <title>Codex 额度走势</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./styles.css?v=quota-system-v20">
+  <link rel="stylesheet" href="./styles.css?v=quota-system-v31">
 </head>
 <body>
   <div class="app-shell">
@@ -16,7 +16,7 @@
       <a class="brand" href="#overview"><strong>Codex</strong><span>额度走势</span></a>
       <nav aria-label="额度视图">
         <button type="button" class="nav-item active" data-view="overview" aria-current="page">额度走势</button>
-        <button type="button" class="nav-item" data-view="details">说明与边界</button>
+        <button type="button" class="nav-item" data-view="usage">Codex 详情</button>
       </nav>
       <div class="sidebar-note"><span>自动更新</span><strong>每 60 秒</strong><p id="sourceMode">正在确认数据源</p></div>
     </aside>
@@ -35,13 +35,13 @@
           <article class="metric"><span>距离额度重置</span><strong id="resetCountdown">—</strong><small id="resetAt">—</small></article>
         </div>
         <article class="panel quota-panel">
-          <div class="panel-head"><div><h2>Codex 额度走势</h2><p id="forecastSummary">根据实际额度变化和近期模型使用，自动选择参考历史。</p></div>
+          <div class="panel-head"><div><h2>Codex 额度走势</h2><p id="forecastSummary">正在按 M2 解释参数与近期 wall-clock token 速率生成 M3 条件走势。</p></div>
           </div>
           <p id="quotaRangeSummary" class="footnote"></p><p id="rangeAnchorStatus" class="footnote" role="status"></p><p id="quotaHistoryError" class="notice hidden" role="status"></p>
           <details id="quotaForecastContext" class="forecast-context"><summary>预测假设与范围</summary><p id="scenarioAssumption" class="scenario-assumption">假设用户不再干预，当前任务树自行推进；每分钟重新计算。</p></details>
           <p id="quotaBoundaryNotice" class="explanation hidden"></p>
           <details id="quotaBoundaryDetails" class="boundary-details hidden"><summary id="quotaBoundarySummary">查看变化明细</summary><div class="table-scroll"><table><thead><tr><th>观测时间</th><th>类型</th><th>剩余额度</th><th>重置时间变化</th></tr></thead><tbody id="quotaBoundaryRows"></tbody></table></div></details>
-          <div class="chart-legend"><span><i class="sample-line actual"></i>服务器实际</span><span id="quotaForecastLegend"><i class="sample-line projected"></i>预计走势（无人干预）</span><span id="quotaBandLegend"><i class="sample-band"></i>不确定范围</span></div>
+          <div class="chart-legend"><span><i class="sample-line actual"></i>服务器实际</span><span id="quotaForecastLegend"><i class="sample-line projected"></i>M3 条件走势（近期速率延续）</span><span id="quotaBandLegend"><i class="sample-band"></i>参数敏感范围</span></div>
           <div id="compositionLegend" class="composition-legend"></div><p id="compositionCoverage" class="footnote"></p>
           <div id="quotaChart" class="chart quota-chart" tabindex="0" aria-label="额度走势与运行构成；左右键移动时间指针，点击查看明细，指针继续跟随"></div>
           <div class="chart-rulers" aria-label="图表时间刻度"><div class="ruler-endpoint" id="rulerStart" role="group" aria-label="开始时间">
@@ -61,37 +61,58 @@
         </article>
       </section>
 
-      <section id="view-details" class="view hidden">
-        <div class="metrics detail-metrics">
-          <article class="metric"><span>预测状态</span><strong id="forecastState" class="compact-value">—</strong><small id="forecastSample">等待快照</small></article>
-          <article class="metric"><span>系统状态</span><strong id="detailMode" class="compact-value">—</strong><small id="privacyMode">等待运行合同</small></article>
-        </div>
-        <article class="panel method-panel">
-          <div class="panel-head"><div><h2>M1–M3 数据口径</h2><p>同一冻结快照区分权威观测、解释拟合与条件走势。</p></div></div>
-          <div class="method-grid">
-            <div><h3>M1 · 证据</h3><p>记录显式选择的数据源、权威额度观测、原生 token 通道、截止时间和冻结身份。</p></div>
-            <div><h3>M2 · 解释</h3><p>在本机活动为主要可观测解释变量的假设下，拟合近似参数、残差与时间对齐敏感范围。</p></div>
-            <div><h3>M3 · 走势</h3><p>把冻结的 M2 参数或显式启动参考映射为条件额度走势；用户活动变化后重新计算。</p></div>
-            <div><h3>解释边界</h3><p>参数不是官方费率，范围不是概率区间，走势不是额度保证；误差保留在 M2 诊断中。</p></div>
+      <section id="view-usage" class="view hidden">
+        <article class="panel consumption-panel">
+          <div class="panel-head"><div><h2>M2 按解释曲线与实测对照</h2><p>用服务器权威额度观测与原生 token 证据，估计各模型的大致额度消耗参数。</p></div><button id="exportM2" class="button secondary" type="button">导出 M2 产物</button></div>
+          <p id="consumptionSummary" class="explanation">正在读取</p>
+          <div class="load-metrics"><div><span>M2 解释状态</span><strong id="consumptionRawError">—</strong></div><div><span>形成解释的对齐候选</span><strong id="consumptionMeterError">—</strong></div><div><span>纳入原生请求</span><strong id="consumptionHit">—</strong></div><div><span>观测周期</span><strong id="consumptionTarget">—</strong></div></div>
+          <p id="consumptionDrift" class="footnote"></p>
+          <div class="reset-accounting">
+            <h3>M2 此次重置后的实测对照</h3><p id="resetAccountingSummary" class="explanation">等待 M2 证据</p>
+            <div class="load-metrics"><div><span>按解释得到的当前扣量</span><strong id="resetExpected">—</strong></div><div><span>服务器累计显示扣量</span><strong id="resetObserved">—</strong></div><div><span>实测减解释</span><strong id="resetResidual">—</strong></div><div><span>证据截至</span><strong id="resetRatio">—</strong></div></div>
+            <div id="resetAccountingChart" class="chart small-chart" role="img" aria-label="M2 按解释得到的曲线、对齐敏感范围与服务器实测扣量对照"></div>
+            <p class="footnote">计算假设目标机器记录的原生请求是额度变化的主要可观测解释；其他设备活动、采样时序与显示取整计入残差。对齐敏感范围不是概率区间。</p>
           </div>
-          <p id="scenarioEvidence" class="footnote">等待预测证据。</p>
+          <details><summary>当前周期的 M2 解释明细</summary><div class="table-scroll"><table><thead><tr><th>时间</th><th>按解释得到</th><th>对齐下界</th><th>对齐上界</th><th>服务器实测</th><th>实测减解释</th></tr></thead><tbody id="consumptionRows"></tbody></table></div></details>
+          <p class="footnote">单位为额度百分点。参数表示在当前证据和上述假设下的近似消耗关系，不等同于官方账单或官方费率。</p>
         </article>
+
+        <div class="metrics detail-metrics"><article class="metric"><span>M3 运行状态</span><strong id="forecastState" class="compact-value">—</strong><small id="forecastSample">等待近期原生请求</small></article><article class="metric"><span>参数参考来源</span><strong id="scenarioEvidence" class="compact-value">—</strong></article></div>
+        <article class="panel"><div class="panel-head"><div><h2>M3 条件负载与额度速度</h2><p>以近期 wall-clock 请求速率和 M2 解释参数推算至本次重置。</p></div></div><div class="load-metrics"><div><span>纳入模型</span><strong id="activeTasks">—</strong></div><div><span>参考窗口原生请求</span><strong id="openTurns">—</strong></div><div><span>撑到重置的平均速度上限</span><strong id="budgetRate">—</strong></div><div><span>M3 参考速度</span><strong id="stateRate">—</strong></div></div><div id="loadChart" class="chart load-chart" role="img" aria-label="M3 条件额度走势及 M2 参数敏感范围"></div><p id="activityNote" class="footnote"></p></article>
+        <article class="panel"><div class="panel-head"><div><h2>M3 每模型负载剖面</h2><p id="observerState">正在读取冻结参数参考与输入截止</p></div><button id="exportM3" class="button secondary" type="button">导出 M3 产物</button></div><div class="table-scroll"><table><thead><tr><th>模型</th><th>证据窗口</th><th>未缓存输入 / 分钟</th><th>缓存输入 / 分钟</th><th>输出 / 分钟</th></tr></thead><tbody id="m3WorkloadRows"></tbody></table></div><p class="footnote">速率按完整 wall-clock 窗口计算，包含空闲时间。它是条件负载，不是任务完成时间或并发推理保证。</p></article>
+
+        <div class="two-columns">
+          <article class="panel"><div class="panel-head"><div><h2>近期使用的模型</h2><p>近期记录构成，越新的使用权重越高</p></div></div><div id="mixRows" class="mix-list"></div><p id="mixDetail" class="footnote"></p></article>
+          <article class="panel"><div class="panel-head"><div><h2>M3 为什么这样走</h2><p>参数来源、负载窗口和证据状态均显式展示</p></div></div><dl class="facts"><div><dt>参数参考来源</dt><dd id="referenceWeight">—</dd></div><div><dt>负载参考窗口</dt><dd id="nearWeight">—</dd></div><div><dt>M2 观测周期</dt><dd id="matchedHours">—</dd></div><div><dt>M1 权威观测</dt><dd id="historyHours">—</dd></div><div><dt>事前成熟对照</dt><dd id="backtestError">—</dd></div></dl><p id="forecastExplanation" class="explanation"></p></article>
+        </div>
+
+        <article class="panel calibration-panel">
+          <div class="panel-head"><div><h2>M2 各模型大致消耗参数</h2><p>统计单位：当前额度窗口的百分点 / 百万 token；同时展示固定时间对齐带来的敏感范围。</p></div></div>
+          <p id="calibrationSummary" class="explanation">正在读取 M2 数据</p>
+          <div class="table-scroll"><table><thead><tr><th>模型</th><th>未缓存输入</th><th>缓存输入</th><th>输出（含推理）</th><th>有效时段</th><th>状态</th></tr></thead><tbody id="calibrationRows"></tbody></table></div>
+          <p class="footnote">每格显示当前最佳解释点与时间对齐敏感范围。触及零边界表示当前数据不能分离该项，不能解释为免费；范围不是已校准的概率区间。</p>
+          <details><summary>M2 证据与求解范围</summary><dl class="facts"><div><dt>权威额度源</dt><dd id="calibrationScope">—</dd></div><div><dt>输入截止</dt><dd id="calibrationPeriod">—</dd></div><div><dt>对齐候选</dt><dd id="calibrationRank">—</dd></div><div><dt>原生请求</dt><dd id="calibrationValidation">—</dd></div><div><dt>观测压缩</dt><dd id="calibrationBaselines">—</dd></div><div><dt>证据模式</dt><dd id="calibrationTolerance">—</dd></div></dl></details>
+        </article>
+
         <article class="panel">
-          <h2>运行合同</h2>
-          <p class="subheading">本地监控、持续拟合和启动参考分别显式配置；页面只读取最近一次原子冻结结果。</p>
-          <dl class="facts"><div><dt>当前参数来源</dt><dd id="detailsSource">—</dd></div><div><dt>快照时间</dt><dd id="detailsGenerated">—</dd></div><div><dt>预测签发</dt><dd id="detailsIssued">—</dd></div><div><dt>本地能力</dt><dd id="detailsPrivacy">—</dd></div></dl>
+          <div class="panel-head"><div><h2>M2 调用额度估算</h2><p>填写完整调用 token，按当前解释参数估算额度消耗。</p></div></div>
+          <div class="budget-controls"><label>模型<select id="budgetModel" aria-label="预算模型"></select></label><label>M2 估算方式<select id="budgetProfile" aria-label="M2 估算方式"><option value="compatibility">当前解释与对齐敏感范围</option></select></label></div>
+          <div class="budget-inputs"><label>调用次数<input id="budgetCalls" aria-label="调用次数" type="number" min="0" max="1000000000" value="100"></label><label>每次未缓存输入 token<input id="budgetUncached" aria-label="每次未缓存输入token" type="number" min="0" max="1000000000" value="2000"></label><label>每次缓存输入 token<input id="budgetCached" aria-label="每次缓存输入token" type="number" min="0" max="1000000000" value="0"></label><label>每次输出 token<input id="budgetOutput" aria-label="每次输出token" type="number" min="0" max="1000000000" value="500"></label></div>
+          <p id="budgetProfileNote" class="footnote">估算仅使用你填写的 token 与当前 M2 解释参数。</p>
+          <div class="budget-result"><button id="calculateBudget" class="button" type="button">计算额度估算</button><strong id="budgetEstimate">填写用量后计算</strong></div>
+          <p id="budgetRange" class="explanation">结果同时展示参考解释值和时间对齐敏感范围。</p><p id="budgetError" class="notice error hidden" role="alert"></p>
+          <p class="footnote">输出包含推理 token；未缓存输入与缓存输入互斥。参数是当前证据下的解释，任意新配比或超出历史的用法都应按条件估算理解。</p>
         </article>
-        <article class="panel">
-          <div class="panel-head"><div><h2>M2 模型参数</h2><p id="m2ParameterSummary">等待 M2 解释结果。</p></div></div>
-          <div class="table-scroll"><table><thead><tr><th>模型</th><th>未缓存输入</th><th>缓存输入</th><th>输出</th></tr></thead><tbody id="m2ParameterRows"><tr><td colspan="4">暂无有限参数</td></tr></tbody></table></div>
-          <p class="footnote">单位：每百万 token 对应的额度百分点。括号内为固定对齐候选敏感范围。</p>
-        </article>
+
+        <div class="metrics"><article class="metric"><span>近 24 小时原生请求</span><strong id="dayRequests">—</strong><small id="dayLegacy">等待原生请求汇总</small></article><article class="metric"><span>近 24 小时输入</span><strong id="dayInput">—</strong><small>原生优先；包含缓存输入</small></article><article class="metric"><span>近 24 小时输出</span><strong id="dayOutput">—</strong><small>包含推理输出</small></article><article class="metric"><span>输入缓存命中率</span><strong id="dayCache">—</strong><small>缓存 token / 全部输入 token</small></article></div>
+        <article class="panel"><div class="panel-head"><div><h2>近 24 小时模型明细</h2><p>只统计去重后的原生请求；用量不等同于官方额度扣款</p></div><button type="button" id="exportData" class="button secondary">导出当前数据</button></div><div class="table-scroll"><table><thead><tr><th>模型</th><th>原生请求</th><th>输入 token</th><th>其中缓存</th><th>输出 token</th><th>缓存率</th><th>记录档位</th></tr></thead><tbody id="modelRows"></tbody></table></div></article>
+        <div class="two-columns"><article class="panel"><h2>近 30 天用量</h2><p class="subheading">输入、缓存与输出分别展示</p><div id="dailyChart" class="chart"></div></article><article class="panel"><h2>近 48 小时模型用量</h2><p class="subheading">小时聚合 · 不绘制无意义的数据点</p><div id="modelChart" class="chart"></div></article></div>
       </section>
 
-      <footer><span id="generated">—</span><span>M1 → M2 → M3 · loopback-first</span></footer>
+      <footer><span id="generated">—</span><span>M1 → M2 → M3 · 同一额度模块</span></footer>
     </main>
   </div>
   <script src="./vendor/echarts.min.js"></script>
-  <script src="./app.js?v=quota-system-v20"></script>
+  <script src="./app.js?v=quota-system-v31"></script>
 </body>
 </html>

@@ -9,11 +9,13 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+import ipaddress
 import json
 import mimetypes
 import sys
 
 from . import __version__
+from .forecast_v2.live_m2 import quote_m2
 from .models import parse_timestamp
 from .system import load_snapshot
 
@@ -50,6 +52,39 @@ class QuotaHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         self._dispatch(head_only=False)
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/forecast-v2/m2/quote":
+            self._json_error(HTTPStatus.NOT_FOUND, "接口不存在。")
+            return
+        try:
+            address = ipaddress.ip_address(self.client_address[0])
+        except ValueError:
+            address = None
+        if address is None or not address.is_loopback:
+            self._json_error(HTTPStatus.FORBIDDEN, "该计算接口仅允许本机访问。")
+            return
+        if self.headers.get_content_type() != "application/json":
+            self._json_error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "请求必须使用 application/json。")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 65536:
+            self._json_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "请求正文大小无效。")
+            return
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("请求正文必须是对象")
+            artifact = (self._snapshot().get("forecast_v2") or {}).get("m2") or {}
+            result = quote_m2(artifact, payload.get("items"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self._json_error(HTTPStatus.BAD_REQUEST, str(error) or "无法计算额度估算。")
+            return
+        self._send_json(HTTPStatus.OK, result)
 
     def _snapshot(self) -> dict[str, Any]:
         return load_snapshot(self.snapshot_path)

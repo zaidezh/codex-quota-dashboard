@@ -31,7 +31,7 @@ def _unavailable(status: str, reason: str, *, m2: Mapping[str, Any]) -> dict[str
     }
 
 
-def _bootstrap(path: Path) -> dict[str, Any]:
+def _bootstrap(path: Path, target_capacity_multiplier: float = 1.0) -> dict[str, Any]:
     raw = path.read_bytes()
     payload = json.loads(raw.decode("utf-8-sig"))
     if not isinstance(payload, dict) or payload.get("schema") != BOOTSTRAP_SCHEMA:
@@ -39,6 +39,16 @@ def _bootstrap(path: Path) -> dict[str, Any]:
     models = payload.get("models")
     if not isinstance(models, dict) or not models:
         raise ValueError("bootstrap_models_missing")
+    reference_capacity_multiplier = float(payload.get("reference_capacity_multiplier", 1.0))
+    target_capacity_multiplier = float(target_capacity_multiplier)
+    if (
+        not math.isfinite(reference_capacity_multiplier)
+        or reference_capacity_multiplier <= 0
+        or not math.isfinite(target_capacity_multiplier)
+        or target_capacity_multiplier <= 0
+    ):
+        raise ValueError("bootstrap_capacity_multiplier_invalid")
+    coefficient_scale = reference_capacity_multiplier / target_capacity_multiplier
     reference: dict[str, dict[str, float]] = {}
     bounds: list[list[float | None]] = []
     names: list[str] = []
@@ -60,15 +70,30 @@ def _bootstrap(path: Path) -> dict[str, Any]:
                 raise ValueError("bootstrap_bound_invalid")
             if value < lower or (upper is not None and value > upper):
                 raise ValueError("bootstrap_reference_outside_bounds")
-            reference[model][channel] = value
+            reference[model][channel] = value * coefficient_scale
             names.append(f"theta.{model}.{channel}")
-            bounds.append([lower, upper])
+            bounds.append([
+                lower * coefficient_scale,
+                upper * coefficient_scale if upper is not None else None,
+            ])
     models_order = list(models)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    digest = sha256(canonical).hexdigest()
+    base_digest = sha256(canonical).hexdigest()
+    transformation = json.dumps(
+        {
+            "base_sha256": base_digest,
+            "reference_capacity_multiplier": reference_capacity_multiplier,
+            "target_capacity_multiplier": target_capacity_multiplier,
+            "coefficient_scale": coefficient_scale,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    digest = sha256(transformation).hexdigest()
+    base_reference_id = str(payload.get("reference_id") or "bootstrap-" + base_digest[:24])
     design = {
         "schema_version": 1,
-        "algorithm_id": "bootstrap-parameter-box-v1",
+        "algorithm_id": "bootstrap-capacity-scaled-parameter-box-v1",
         "input_sha256": digest,
         "alignment_offset_seconds": None,
         "models": models_order,
@@ -84,21 +109,29 @@ def _bootstrap(path: Path) -> dict[str, Any]:
     }
     return {
         "source": "bootstrap_reference",
-        "reference_id": str(payload.get("reference_id") or "bootstrap-" + digest[:24]),
+        "reference_id": f"{base_reference_id}:capacity:{target_capacity_multiplier:g}:{digest[:12]}",
         "content_sha256": digest,
         "models": models_order,
         "reference_theta": reference,
         "compatibility_design": design,
         "metadata": {
-            key: payload.get(key)
-            for key in (
-                "unit",
-                "source_category",
-                "privacy",
-                "intended_use",
-                "limitations",
-            )
-            if payload.get(key) is not None
+            "base_reference_id": base_reference_id,
+            "base_content_sha256": base_digest,
+            "reference_capacity_multiplier": reference_capacity_multiplier,
+            "target_capacity_multiplier": target_capacity_multiplier,
+            "coefficient_scale": coefficient_scale,
+            "capacity_mode": "explicit_reference_ratio",
+            **{
+                key: payload.get(key)
+                for key in (
+                    "unit",
+                    "source_category",
+                    "privacy",
+                    "intended_use",
+                    "limitations",
+                )
+                if payload.get(key) is not None
+            },
         },
     }
 
@@ -247,7 +280,7 @@ def _workload(
             "forecast-v2-m3-live-plan",
             [iso_utc(start), iso_utc(now), iso_utc(reset_at), slots],
         )[:24],
-        "mode": "observed_task_forecast",
+        "mode": "observed_workload_projection",
         "scope_merge": "replaces_declared_scope",
         "input_cutoff": iso_utc(now),
         "issued_at": iso_utc(now),
@@ -282,6 +315,7 @@ def build_live_m3(
     latest_limit: Mapping[str, Any] | None,
     *,
     bootstrap_reference_path: Path | None,
+    bootstrap_capacity_multiplier: float = 1.0,
     now: datetime | None = None,
     lookback_minutes: int = 120,
     path_count: int = 1,
@@ -298,7 +332,10 @@ def build_live_m3(
     reference = _local_m2_reference(m2)
     if reference is None and bootstrap_reference_path is not None:
         try:
-            reference = _bootstrap(bootstrap_reference_path)
+            reference = _bootstrap(
+                bootstrap_reference_path,
+                target_capacity_multiplier=bootstrap_capacity_multiplier,
+            )
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
             return _unavailable("unavailable", f"bootstrap_reference_invalid:{type(error).__name__}", m2=m2)
     if reference is None:

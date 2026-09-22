@@ -5,7 +5,7 @@ from contextlib import closing
 from hashlib import sha256
 from importlib.resources import files
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import json
 import threading
 
@@ -23,6 +23,7 @@ from codex_quota_dashboard.config import (
     load_config,
 )
 from codex_quota_dashboard.forecast_v2.live_m3 import _bootstrap
+from codex_quota_dashboard.integration import copy_static_assets, static_asset_manifest
 from codex_quota_dashboard.models import RateLimitSnapshot, iso_utc
 from codex_quota_dashboard.server import create_server
 from codex_quota_dashboard.store import add_rate_limits, connect
@@ -44,6 +45,7 @@ def test_collection_and_fitting_are_disabled_by_default(tmp_path: Path) -> None:
     assert config.monitoring.enabled is False
     assert config.local_fitting.enabled is False
     assert config.bootstrap_reference.mode == "off"
+    assert config.bootstrap_reference.capacity_multiplier == 1.0
     assert config.state.directory is None
 
 
@@ -71,8 +73,19 @@ def test_bundled_reference_matches_manifest_and_loader() -> None:
     assert sha256(path.read_bytes()).hexdigest() == manifest["sha256"]
     loaded = _bootstrap(path)
     assert loaded["source"] == "bootstrap_reference"
-    assert loaded["reference_id"] == manifest["reference_id"]
+    assert loaded["metadata"]["base_reference_id"] == manifest["reference_id"]
+    assert loaded["metadata"]["reference_capacity_multiplier"] == 1.0
+    assert loaded["metadata"]["target_capacity_multiplier"] == 1.0
+    assert loaded["reference_id"].startswith(manifest["reference_id"] + ":capacity:1:")
     assert set(loaded["models"]) == {"gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"}
+
+
+def test_public_integration_copies_identical_static_assets(tmp_path: Path) -> None:
+    expected = static_asset_manifest()
+    copied = copy_static_assets(tmp_path / "static")
+    assert copied == expected
+    for relative, digest in expected["files"].items():
+        assert sha256((tmp_path / "static" / relative).read_bytes()).hexdigest() == digest
 
 
 def test_explicit_jsonl_collection_is_incremental(tmp_path: Path) -> None:
@@ -211,7 +224,14 @@ def test_full_snapshot_prefers_finite_local_m2(tmp_path: Path) -> None:
     assert snapshot["forecast_v2"]["m2"]["status"] == "feasible"
     assert snapshot["forecast_v2"]["m3"]["reference_source"] == "local_m2_explanation"
     assert snapshot["system_state"] == "locally_validated"
-    assert snapshot["task_forecast"]["points"]
+    current = snapshot["forecast_v2"]["m2"]["current_cycle"]["current"]
+    assert current["anchor_observed_used_pp"] == pytest.approx(10.0)
+    assert current["observed_cycle_used_pp"] == pytest.approx(11.0)
+    assert current["explained_cycle_used_pp"] == pytest.approx(
+        10.0 + current["explained_used_pp"]
+    )
+    assert set(snapshot["forecast_v2"]) == {"m1", "m2", "m3"}
+    assert "task_forecast" not in snapshot
     assert "_solver_candidates" not in snapshot["forecast_v2"]["m2"]
     serialized = json.dumps(snapshot)
     assert "private-response-sentinel" not in serialized
@@ -228,8 +248,25 @@ def test_http_server_exposes_only_frozen_projection(tmp_path: Path) -> None:
         "generated_at": "2026-09-22T00:00:00Z",
         "system_state": "reference_only",
         "adaptive": {"actual": [], "boundaries": []},
-        "forecast_v2": {"m1": {}, "m2": {}, "m3": {}},
-        "task_forecast": {"points": []},
+        "forecast_v2": {
+            "m1": {},
+            "m2": {
+                "status": "approximate",
+                "strict_status": "infeasible",
+                "m2_id": "m2-http-test",
+                "quote_ready": True,
+                "models": ["gpt-test"],
+                "model_parameters": [{
+                    "model": "gpt-test",
+                    "channels": {
+                        "uncached_input": {"reference": 1.0, "lower": 0.5, "upper": 2.0},
+                        "cached_input": {"reference": 0.2, "lower": 0.0, "upper": 0.5},
+                        "output": {"reference": 3.0, "lower": 1.0, "upper": 5.0},
+                    },
+                }],
+            },
+            "m3": {},
+        },
     }
     snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
     server = create_server("127.0.0.1", 0, snapshot_path)
@@ -242,6 +279,17 @@ def test_http_server_exposes_only_frozen_projection(tmp_path: Path) -> None:
         assert health["forecast_system"] == "m1-m2-m3"
         assert dashboard["mode"] == "local_system"
         assert dashboard["snapshot"]["snapshot_id"] == "snapshot-test"
+        request = Request(
+            root + "/api/forecast-v2/m2/quote",
+            data=json.dumps({"items": [{"model": "gpt-test", "calls": 1, "uncached_input": 1_000_000, "cached_input": 0, "output": 0}]}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        quote = json.loads(urlopen(request).read())
+        assert quote["m2_id"] == "m2-http-test"
+        assert quote["estimate_pp"] == pytest.approx(1.0)
+        assert quote["lower_pp"] == pytest.approx(0.5)
+        assert quote["upper_pp"] == pytest.approx(2.0)
     finally:
         server.shutdown()
         server.server_close()

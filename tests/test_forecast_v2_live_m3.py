@@ -2,7 +2,9 @@ from datetime import datetime, timedelta, timezone
 import json
 import sqlite3
 
-from codex_quota_dashboard.forecast_v2.live_m3 import build_live_m3
+import pytest
+
+from codex_quota_dashboard.forecast_v2.live_m3 import _bootstrap, build_live_m3
 from codex_quota_dashboard.models import iso_utc
 
 
@@ -44,6 +46,7 @@ def bootstrap(tmp_path):
             {
                 "schema": "quota-forecast-v2-bootstrap-reference-v1",
                 "reference_id": "safe-start-v1",
+                "reference_capacity_multiplier": 1.0,
                 "unit": "percentage_points_per_million_tokens",
                 "source_category": "deidentified_fitted_aggregate",
                 "privacy": "no_raw_observations_or_identifiers",
@@ -80,10 +83,23 @@ def test_bootstrap_is_explicit_primary_reference(tmp_path):
     )
     assert result["status"] == "conditional"
     assert result["reference_source"] == "bootstrap_reference"
-    assert result["reference_id"] == "safe-start-v1"
+    assert result["reference_id"].startswith("safe-start-v1:capacity:1:")
+    assert result["reference_metadata"]["target_capacity_multiplier"] == 1.0
     assert result["m2_status"] == "infeasible"
     assert result["points"]
     assert result["points"][0]["compatibility_used_pp"]["lower_used_pp"] is not None
+
+
+@pytest.mark.parametrize("target", [1.0, 10.0, 20.0, 7.5])
+def test_bootstrap_capacity_scaling_is_deterministic(tmp_path, target):
+    reference = _bootstrap(bootstrap(tmp_path), target_capacity_multiplier=target)
+    assert reference["reference_theta"]["gpt-test"]["uncached_input"] == pytest.approx(1.0 / target)
+    assert reference["compatibility_design"]["bounds"][0] == pytest.approx([0.5 / target, 2.0 / target])
+    assert reference["metadata"]["coefficient_scale"] == pytest.approx(1.0 / target)
+    assert reference["metadata"]["target_capacity_multiplier"] == target
+    assert reference["reference_id"] == _bootstrap(
+        bootstrap(tmp_path), target_capacity_multiplier=target
+    )["reference_id"]
 
 
 def test_missing_bootstrap_does_not_fall_back_to_legacy():
@@ -138,12 +154,14 @@ def test_feasible_local_m2_takes_precedence_over_bootstrap(tmp_path):
         m2,
         latest(),
         bootstrap_reference_path=bootstrap(tmp_path),
+        bootstrap_capacity_multiplier=20.0,
         now=NOW,
         bucket_seconds=900,
     )
     assert result["status"] == "conditional"
     assert result["reference_source"] == "local_m2_explanation"
     assert result["reference_id"] == "m2-feasible"
+    assert "target_capacity_multiplier" not in result["reference_metadata"]
     assert "bootstrap_reference" not in result["quality_flags"]
 
 

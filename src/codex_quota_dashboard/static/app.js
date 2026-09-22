@@ -3,8 +3,9 @@
   const $ = id => document.getElementById(id);
   const charts = new Map();
   const colors = ["#8ab4ef", "#76c6b8", "#e4b979", "#b4a4da", "#d29ba5", "#9db98e"];
-  const names = {overview: "Codex 额度走势", details: "说明与边界"};
+  const names = {overview: "Codex 额度走势", usage: "Codex 详情"};
   const state = {data: null, telemetry: {}, pointer: null, busy: false, view: "overview", range: "window", offline: false, scope: "current_mix", scenario: "current", burstHours: "2", burstAfter: "low"};
+  state.budgetModel = ""; state.budgetBusy = false; state.budgetRevision = 0; state.budgetResultId = null;
   Object.assign(state,{quotaMode:'live',quotaDays:7,quotaDate:'',quotaData:null,quotaDataKey:null,quotaZoom:null,quotaRequest:0,runtimeRequest:0});
   const valid = v => v != null && Number.isFinite(Number(v));
   const numberFormats=new Map(),dateFormats=new Map(),timeIndexes=new WeakMap();
@@ -387,14 +388,24 @@
       $('runtimeDetailRows').innerHTML=r.threads.map(t=>{const label=esc(t.title||t.thread),identity=String(t.thread||'');const task=identity.startsWith('local-task-')?label:`<a href="codex://threads/${encodeURIComponent(identity)}">${label}</a>`;return `<tr><td>${task}<br><small>${esc(t.host)}</small></td><td>${esc(groupName(t.model+'|'+t.effort))}<br><small>${esc(tier(t.tier))}</small></td><td>${esc(({observed:'开始结束已记录',reconstructed_start:'起点由执行证据恢复',reconstructed_end:'以最终输出恢复结束',open_observed_prefix:'结束未确认，仅已观测部分'})[t.quality]||t.quality)}<br><small>${date(t.start)} — ${date(t.end)}</small></td></tr>`;}).join('')||'<tr><td colspan="3">此刻没有可确认的运行记录；缺记录不等于全机空闲。</td></tr>';
     }catch(error){text('runtimeDetailTime',`${date(time,false,true)} · 明细暂不可用：${error.message}`);}
   }
+  function m3Data() { return state.data?.forecast_v2?.m3 || {}; }
+  function m3Points() {
+    return (m3Data().points || []).map(point => {
+      const band=point.compatibility_used_pp || {},center=Number(point.expected_used_pp);
+      const lower=valid(band.lower_used_pp)?Number(band.lower_used_pp):center;
+      const upper=valid(band.upper_used_pp)?Number(band.upper_used_pp):center;
+      return {time:point.time,median:Math.min(100,center),lower:Math.min(100,lower),upper:Math.min(100,upper)};
+    });
+  }
   function renderQuota(a) {
     const r=resolveQuotaRange(),loaded=state.rulerDragging?cacheForRange():(state.quotaDataKey===quotaKey()?state.quotaData:cacheForRange()),begin=r.start,end=r.end,now=Date.parse(state.data.generated_at),latest=a.latest||{};
-    const geometryStart=state.rulerDragging?Math.min(Date.parse(loaded?.start)||begin,Date.parse(state.data.task_forecast?.points?.[0]?.time)||begin):begin,geometryEnd=state.rulerDragging?Math.max(Date.parse(loaded?.end)||end,Date.parse(state.data.task_forecast?.points?.at(-1)?.time)||end):end;
+    const allForecast=m3Points(),firstForecast=Date.parse(allForecast[0]?.time),lastForecast=Date.parse(allForecast.at(-1)?.time);
+    const geometryStart=state.rulerDragging?Math.min(Date.parse(loaded?.start)||begin,Number.isFinite(firstForecast)?firstForecast:begin):begin,geometryEnd=state.rulerDragging?Math.max(Date.parse(loaded?.end)||end,Number.isFinite(lastForecast)?lastForecast:end):end;
     const actual=(loaded?.points||[]).filter(p=>Date.parse(p.time)>=geometryStart-300000&&Date.parse(p.time)<=geometryEnd);
-    const forecast=(state.data.task_forecast?.points||[]).filter(p=>Date.parse(p.time)>=geometryStart&&Date.parse(p.time)<=geometryEnd);
+    const forecast=allForecast.filter(p=>Date.parse(p.time)>=geometryStart&&Date.parse(p.time)<=geometryEnd);
     const boundaries=(loaded?.boundaries||[]).filter(b=>Date.parse(b.time)>=geometryStart&&Date.parse(b.time)<=geometryEnd);state.quotaBoundaries=boundaries;
     if(!loaded)text('rulerStatus','所选范围尚未加载，正在读取');
-    state.quotaRenderedSource=loaded;const composition=loaded?.composition||{},distribution=state.data.task_forecast?.thread_distribution||{},hasFuture=end>now;
+    state.quotaRenderedSource=loaded;const composition=loaded?.composition||{},distribution={status:'unavailable',coverage:'unavailable',points:[]},hasFuture=end>now&&forecast.length>0;
     syncRangeControls();text('quotaRangeSummary',`${date(begin,false,true)} — ${date(end,false,true)} · ${rangeZone()} · 历史与未来使用同一范围。有采样日期在年份轴上浅色标示，缺测仍保留。${loaded?.status==='empty'?' 本段没有服务器采样。':''}`);
     $('quotaHistoryError').classList.toggle('hidden',!state.quotaError);text('quotaHistoryError',state.quotaError||'');
     for(const id of ['quotaForecastLegend','quotaBandLegend','quotaFutureResults'])$(id).classList.toggle('hidden',!hasFuture);
@@ -417,7 +428,7 @@
     o.tooltip={...o.tooltip,triggerOn:'none',transitionDuration:0,extraCssText:'max-width:min(380px,calc(100vw - 76px));white-space:normal;line-height:1.45;',alwaysShowContent:false,axisPointer:{type:'line',snap:false,animation:false,lineStyle:{type:'dashed'}},formatter:params=>{
       const t=state.quotaPointer??Number(params[0]?.axisValue),out=[`<strong>${esc(date(t,false,true))}</strong>`],measured=latestBefore(actual,t),b=compositionAt(t),fp=t<=Date.parse(future.at(-1)?.time)?latestBefore(future,t):null,q=t<=Date.parse(forecast.at(-1)?.time)?latestBefore(forecast,t):null;
       if(measured&&measured.used_percent!=null&&t<=now)out.push(`<div>服务器实际：${n(measured.used_percent,1)}%<br><small>采样 ${esc(date(measured.time,false,true))} · 距指针 ${n((t-Date.parse(measured.time))/1000)} 秒</small></div>`);else if(t<=now)out.push('<div>此刻缺少服务器采样</div>');
-      if(t>now&&q)out.push(`<div>预计已用：${n(q.median,1)}%（${n(q.lower,1)}–${n(q.upper,1)}%）<br><small>签发 ${esc(date(state.data.task_forecast.issued_at||state.data.task_forecast.as_of))}</small></div>`);
+      if(t>now&&q)out.push(`<div>M3 条件预计已用：${n(q.median,1)}%（参数敏感范围 ${n(q.lower,1)}–${n(q.upper,1)}%）<br><small>签发 ${esc(date(m3Data().issued_at||m3Data().input_cutoff))}</small></div>`);
       else if(t>now)out.push('<div>该时刻暂无已签发预测</div>');
       if(t<=now&&b){out.push(`<div>桶平均已观测并发：${n(b.mean_concurrency,2)}<br><small>${esc(date(b.time,false,true))} — ${esc(date(b.end,false,true))}</small></div>`);for(const [k,g] of Object.entries(b.groups))out.push(`<div>${esc(groupName(k))}：平均 ${n(g.mean_concurrency,2)} · ${pct(g.share)}</div>`);if(b.uncertain_seconds||composition.status==='partial')out.push('<div>部分执行边界未知；这是已观测下限</div>');}
       if(t>now&&fp){out.push(`<div>预计已覆盖并发：${n(fp.expected_total,2)}</div>`);for(const [k,g] of Object.entries(fp.groups))out.push(`<div>${esc(groupName(k))}：预计 ${n(g.expected,2)}</div>`);if(distribution.coverage==='partial')out.push('<div>续跑等未覆盖，不能视为全机总数</div>');}
@@ -432,15 +443,15 @@
     o.series=[colored('actual-concurrency-color',actual.map(p=>[p.time,p.used_percent]),historical,true),colored('forecast-concurrency-color',curveData(forecast),anticipated,false),...observedSeries,...predictedSeries,
       line('pointer-domain','时间指针',[[begin,0],[end,0]],{silent:true,lineStyle:{opacity:0},emphasis:{disabled:true},tooltip:{show:true}}),
       line('band-base','范围下沿',forecast.map(p=>[p.time,p.lower]),{...passive,stack:'scenario',lineStyle:{opacity:0},areaStyle:{opacity:0},z:2}),
-      line('band-width','预测不确定范围',forecast.map(p=>[p.time,Math.max(0,p.upper-p.lower)]),{...passive,stack:'scenario',lineStyle:{opacity:0},areaStyle:{color:'#8ab4ef',opacity:.12},z:2}),
+      line('band-width','参数敏感范围',forecast.map(p=>[p.time,Math.max(0,p.upper-p.lower)]),{...passive,stack:'scenario',lineStyle:{opacity:0},areaStyle:{color:'#8ab4ef',opacity:.12},z:2}),
       line('actual','服务器实际',actual.map(p=>[p.time,p.used_percent]),{emphasis:{disabled:true},step:'end',lineStyle:{opacity:0},z:8,markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed'},label:{show:false},data:boundaries.map(b=>({xAxis:b.time,lineStyle:{color:eventColor(b.kind)},label:{show:false,color:eventColor(b.kind)}}))}}),
-      line('median','预计走势（无人干预）',curveData(forecast),{emphasis:{disabled:true},lineStyle:{opacity:0},z:9})];
+      line('median','M3 条件走势（近期速率延续）',curveData(forecast),{emphasis:{disabled:true},lineStyle:{opacity:0},z:9})];
     const maximum=Math.max(1,Math.ceil(Math.max(0,...buckets.map(p=>p.mean_concurrency||0),...future.map(p=>p.expected_total||0))));
     o.visualMap={type:'continuous',min:0,max:maximum,dimension:4,seriesIndex:[0,1],calculable:false,hoverLink:false,orient:compact?'horizontal':'vertical',...(compact?{left:'center',bottom:0}:{right:0,top:'center'}),itemWidth:12,itemHeight:compact?135:150,text:[`${maximum} 并发`,'0 并发'],textStyle:{color:'#d5e4f2',fontSize:10},inRange:{color:['#e8f5ff','#ffe08a','#ff914d','#f04463']},outOfRange:{color:'#a4acb5'}};
     chart('quotaChart',o);const c=charts.get('quotaChart');
     state.quotaPlotRange=[begin,end];bindPlotPointer(c);updateNowMarker();restorePlotPointer();
     text('quotaObservation',`实测 ${loaded?.raw_samples??actual.length} 点 · ${loaded?.reduction?'按显示尺度保留首末与极值':''} · 纵轴为已用额度`);
-    text('quotaScopeNote',`运行构成与额度独立统计；预测签发 ${date(state.data.task_forecast?.issued_at||state.data.task_forecast?.as_of)}`);
+    text('quotaScopeNote',`M1 实测与 M3 条件走势同图；M3 签发 ${date(m3Data().issued_at||m3Data().input_cutoff)}`);
   }
 
   function curveData(points, hit) {
@@ -449,17 +460,42 @@
     if (hit) data.push([hit, 100]);
     return data;
   }
-  function renderTaskForecast(a) {
-    const f = state.data.task_forecast || {}, tasks = f.tasks || [], history = f.minute_history || [];
-    text("forecastState", ({conditional:"M3 条件走势",tracking:"M3 条件走势",idle:"近期工作负载为空",coverage_uncertain:"覆盖仍有不确定性",stale:"观测已过期",insufficient_evidence:"证据不足",unavailable:"暂不可用"})[f.status] || "样本不足");
-    text("forecastSample", `${n(tasks.filter(t=>t.status === "observed_open").length)} 个近期活动任务 · 每分钟推算`);
-    const final = f.points?.at(-1), hit = f.points?.find(p=>p.median >= 100)?.time;
-    text("forecastSummary", final ? `假设用户不再干预，${hit ? "主曲线预计在 " + date(hit) + " 达到额度上限" : "本次重置前预计剩余约 " + n(100-final.median,1) + "%"}。${tasks.length ? "随任务结束、等待和子任务变化重新计算。" : "当前轮次之间仍会计入有依据的目标续跑和定时任务。"}` : "观测不足或过期，暂不绘制预测。实际额度继续显示。");
-    text("scenarioAssumption", `不假设用户追加任务。${f.warning || ""}`);
-    text("scenarioRemaining", final ? `${n(100-final.median,1)}%（范围 ${n(100-final.upper,1)}–${n(100-final.lower,1)}%）` : "—");
-    text("scenarioEndLabel", "本次重置前剩余额度");
-    text("scenarioHitting", hit ? date(hit) : "预测主曲线未达到上限");
-    text("scenarioEvidence",  `当前任务 ${n((f.semantic_weight || 0)*100)}%（${n(f.semantic_tasks || 0)}项） · 定时补估 ${n(f.scheduled?.jobs?.filter(j=>j.basis === "luna_cold_start").length || 0)}项`);
+  function m2Data() { return state.data?.forecast_v2?.m2 || {}; }
+  function m2StatusName(status) { return ({feasible:'精确相容',approximate:'按假设解释',infeasible:'无法形成解释',timeout:'求解超时',numeric_failure:'数值失败',insufficient_evidence:'证据不足',unavailable:'暂不可用',disabled:'未启用'})[status] || status || '未知'; }
+  function referenceSourceName(f=m3Data()) {
+    if(f.reference_source==='local_m2_explanation'||f.reference_source==='local_m2_fit')return '本地 M2 解释 · 自动同构';
+    if(f.reference_source==='bootstrap_reference') {
+      const multiplier=f.reference_metadata?.target_capacity_multiplier??state.data?.runtime?.bootstrap_capacity_multiplier;
+      return valid(multiplier)?`启动参考 · 目标容量 ${n(multiplier,2)}×`:'启动参考';
+    }
+    return '尚无可用参数';
+  }
+  function renderM3Forecast(a, details = false) {
+    const f=m3Data(),points=m3Points(),latest=a.latest||{},work=f.workload_window||{},models=work.models||[],final=points.at(-1);
+    const statusName={conditional:"条件走势已生成",idle:"近期负载为空",insufficient_evidence:"证据不足",unavailable:"暂不可用",disabled:"未启用"};
+    const source=referenceSourceName(f);
+    text("forecastState",statusName[f.status]||f.status||"未知");
+    text("forecastSample",`${n(work.request_count)} 次原生请求 · ${n(work.lookback_minutes)} 分钟窗口`);
+    const hit=points.find(p=>p.median>=100)?.time;
+    text("forecastSummary",final?`${source}驱动的 M3 条件走势：${hit?`约在 ${date(hit)} 达到显示上限`:`本次重置前参考剩余 ${n(Math.max(0,100-final.median),1)}%`}。该结果假设近期 wall-clock token 速率延续。`:`M3 暂不绘制未来走势：${f.reason||"等待可用 M2 解释参数或显式启动参考"}。服务器实测仍继续显示。`);
+    text("scenarioAssumption",`M3 假设最近 ${n(work.lookback_minutes)} 分钟的每模型 wall-clock token 速率延续至本次重置；这是条件投影，不是概率预测。`);
+    text("scenarioRemaining",final?`${n(Math.max(0,100-final.median),1)}%（参数敏感范围 ${n(Math.max(0,100-final.upper),1)}–${n(Math.max(0,100-final.lower),1)}%）`:"—");
+    text("scenarioEndLabel","本次重置前 M3 条件剩余");
+    text("scenarioHitting",hit?date(hit):"M3 参考线未达到上限");
+    text("scenarioEvidence",`${source} · 本地 M2 ${m2StatusName(m2Data().status)}`);
+    if(!details)return;
+    text("activeTasks",n(models.length));text("openTurns",n(work.request_count));
+    const remainMinutes=(Date.parse(latest.resets_at)-Date.parse(state.data.generated_at))/60000;
+    text("budgetRate",remainMinutes>0?`${n((100-latest.used_percent)/remainMinutes,4)} 百分点 / 分钟`:"—");
+    const first=points[0],elapsed=first&&final?(Date.parse(final.time)-Date.parse(first.time))/60000:0;
+    text("stateRate",elapsed>0?`${n((final.median-first.median)/elapsed,4)} 百分点 / 分钟`:"—");
+    text("activityNote",`M3 负载来自 ${n(work.lookback_minutes)} 分钟 wall-clock 聚合；空闲时间包含在分母内。参数来源：${source}；M2 残差不代表概率。`);
+    const o=options();o.yAxis={...o.yAxis,name:"已用额度（百分点）",min:0,max:100};
+    o.series=[line("m3-center","M3 按解释走势",points.map(p=>[p.time,p.median])),line("m3-low","参数敏感下界",points.map(p=>[p.time,p.lower]),{lineStyle:{type:"dashed"}}),line("m3-high","参数敏感上界",points.map(p=>[p.time,p.upper]),{lineStyle:{type:"dashed"}})];chart("loadChart",o);
+    $("m3WorkloadRows").innerHTML=models.length?models.map(row=>`<tr><td>${esc(model(row.model))}</td><td>${n(work.lookback_minutes)} 分钟原生请求聚合</td><td>${compact(row.tokens_per_wall_minute?.uncached_input)}</td><td>${compact(row.tokens_per_wall_minute?.cached_input)}</td><td>${compact(row.tokens_per_wall_minute?.output)}</td></tr>`).join(""):'<tr><td colspan="5">近期窗口没有可投影的原生请求</td></tr>';
+    text("observerState",`M3 参考 ${f.reference_id||"未就绪"} · 输入截止 ${date(f.input_cutoff)}`);
+    text("referenceWeight",source);text("nearWeight",`${n(work.lookback_minutes)} 分钟 wall-clock`);text("matchedHours",`${n(m2Data().evidence?.period_count)} 个 M2 周期`);text("historyHours",`${n(m2Data().evidence?.raw_observation_count)} 个权威快照`);text("backtestError","等待事前签发成熟样本");
+    text("forecastExplanation",`M3 优先读取本地 M2 的解释参数，并使用原生请求构造条件负载。解释可带公开残差；只有尚未形成可用本地解释时，才读取显式启用的启动参考。`);
   }
   function countdown() {
     const reset = state.data?.adaptive?.latest?.resets_at;
@@ -472,10 +508,10 @@
     const a = state.data.adaptive, latest = a.latest || {};
     text("remainingQuota", valid(latest.remaining_percent) ? `${n(latest.remaining_percent)}%` : "—");
     text("quotaUsed", valid(latest.used_percent) ? `本窗口已用 ${n(latest.used_percent)}% · 服务器观测` : "等待服务器观测");
-    const m2Current=state.data.forecast_v2?.m2?.current_cycle?.current||{},explainedUsed=Number(m2Current.explained_used_pp);
+    const m2Current=state.data.forecast_v2?.m2?.current_cycle?.current||{},explainedUsed=Number(m2Current.explained_cycle_used_pp??m2Current.explained_used_pp);
     if(valid(explainedUsed)) {
       const explainedRemaining=Math.max(0,Math.min(100,100-explainedUsed));
-      const usedLow=Number(m2Current.explained_lower_pp??m2Current.compatible_lower_pp),usedHigh=Number(m2Current.explained_upper_pp??m2Current.compatible_upper_pp);
+      const usedLow=Number(m2Current.explained_cycle_lower_pp??m2Current.explained_lower_pp??m2Current.compatible_lower_pp),usedHigh=Number(m2Current.explained_cycle_upper_pp??m2Current.explained_upper_pp??m2Current.compatible_upper_pp);
       text("explainedRemainingQuota",`${n(explainedRemaining,2)}%`);
       text("explainedRemainingNote",valid(usedLow)&&valid(usedHigh)?`按解释当前扣量 ${n(explainedUsed,2)}%；对齐剩余 ${n(Math.max(0,100-usedHigh),2)}–${n(Math.min(100,100-usedLow),2)}%`:`按解释当前扣量 ${n(explainedUsed,2)}%`);
     } else {
@@ -483,28 +519,64 @@
       text("explainedRemainingNote","等待 M2 当前解释");
     }
     countdown(); text("resetAt", date(latest.resets_at));
-    renderTaskForecast(a);
+    renderM3Forecast(a);
     renderQuota(a);
   }
-  function renderDetails() {
-    const f=state.data.task_forecast||{},runtime=state.data.runtime||{},m2=state.data.forecast_v2?.m2||{},m3=state.data.forecast_v2?.m3||{};
-    const states={locally_validated:'本地解释已采用',reference_only:'启动参考',collecting:'正在积累证据',empty_history:'空历史'};
-    const sources={local_m2_explanation:'本地 M2 解释',local_m2_fit:'本地 M2 解释',bootstrap_reference:'显式启动参考'};
-    text('detailMode',states[state.data.system_state]||state.data.system_state||'等待状态');
-    text('privacyMode',`监控${runtime.monitoring_enabled?'已开启':'未开启'} · 拟合${runtime.local_fitting_enabled?'已开启':'未开启'}`);
-    text('detailsSource',sources[m3.reference_source]||'尚无可用参数');
-    text('detailsGenerated',date(state.data.generated_at,false,true));text('detailsIssued',date(f.issued_at||f.as_of,false,true));
-    text('detailsPrivacy',`监控${runtime.monitoring_enabled?'开启':'关闭'} · 本地拟合${runtime.local_fitting_enabled?'开启':'关闭'} · 参考 ${runtime.bootstrap_mode||'off'}`);
-    const statusNames={approximate:'按假设解释',feasible:'严格相容',disabled:'显式关闭',insufficient_evidence:'证据不足',timeout:'求解超时',numeric_failure:'数值失败',unavailable:'暂不可用'};
-    const fit=m2.fit_error||{};
-    text('m2ParameterSummary',`${statusNames[m2.status]||m2.status||'等待结果'}${valid(fit.max_constraint_slack_pp)?` · 最大残差 ${n(fit.max_constraint_slack_pp,3)} 个百分点`:''}；范围为时间对齐敏感性。`);
-    const formatChannel=item=>item&&valid(item.reference)?`${n(item.reference,3)}（${n(item.lower,3)}–${valid(item.upper)?n(item.upper,3):'未限定'}）`:'—';
-    $('m2ParameterRows').innerHTML=(m2.model_parameters||[]).map(row=>`<tr><td>${esc(row.model)}</td><td>${formatChannel(row.channels?.uncached_input)}</td><td>${formatChannel(row.channels?.cached_input)}</td><td>${formatChannel(row.channels?.output)}</td></tr>`).join('')||'<tr><td colspan="4">暂无有限参数</td></tr>';
+  function budgetModel() { return m2Data().model_parameters?.find(item => item.model === state.budgetModel); }
+  function renderUsage() {
+    const data=state.data,a=data.adaptive||{},day=a.day_summary||data.summary?.last_24_hours||{};
+    renderConsumption();renderM3Forecast(a,true);renderCalibration();
+    text("dayRequests",n(day.native_requests));text("dayLegacy","全部来自去重后的原生请求");text("dayInput",compact(day.input_tokens));text("dayOutput",compact(day.output_tokens));text("dayCache",pct(day.cache_rate));
+    $("modelRows").innerHTML=a.model_rows?.length?a.model_rows.map(row=>`<tr><td class="model-id">${esc(model(row.model))}</td><td>${n(row.native_requests)}</td><td>${compact(row.input_tokens)}</td><td>${compact(row.cached_input_tokens)}</td><td>${compact(row.output_tokens)}</td><td>${pct(row.cache_ratio)}</td><td>${esc((row.tiers||[]).map(tier).join(" / "))}</td></tr>`).join(""):'<tr><td colspan="7">尚无用量记录</td></tr>';
+    const mix=Object.entries(a.target?.mix||{}).sort((x,y)=>y[1]-x[1]);
+    $("mixRows").innerHTML=mix.length?mix.map(([key,share])=>{const at=key.lastIndexOf("|");return `<div class="mix-item"><span class="mix-name">${esc(model(key.slice(0,at)))} <span class="quiet">· ${esc(tier(key.slice(at+1)))}</span></span><span class="mix-value">${pct(share)}</span><div class="mix-track"><span class="mix-fill" data-share="${Math.max(0,Math.min(1,share))}"></span></div></div>`;}).join(""):'<p class="empty">近期没有足够请求识别当前模型构成。</p>';
+    document.querySelectorAll(".mix-fill").forEach(element=>{element.style.width=`${Number(element.dataset.share)*100}%`;});
+    const unknownShare=mix.filter(([key])=>key.endsWith("|unknown")).reduce((sum,[,value])=>sum+value,0);
+    text("mixDetail",`近期输入缓存命中约 ${pct(a.target?.cache_ratio)}。${unknownShare?`${pct(unknownShare)} 的记录档位未记录。`:""}占比只描述原生请求构成，不代表额度份额。`);
+    const days=(a.daily_usage||data.series?.daily||[]).slice(-30),daily=options();daily.xAxis={...daily.xAxis,type:"category",data:days.map(row=>row.day.slice(5))};daily.yAxis.axisLabel.formatter=compact;
+    daily.series=[{id:"uncached",name:"未缓存输入",type:"bar",stack:"input",data:days.map(row=>Math.max(0,row.input_tokens-row.cached_input_tokens))},{id:"cached",name:"缓存输入",type:"bar",stack:"input",data:days.map(row=>row.cached_input_tokens)},{id:"output",name:"输出",type:"bar",data:days.map(row=>row.output_tokens)}];chart("dailyChart",daily);
+    const hourly=(a.hourly_usage||[]).filter(row=>Date.parse(row.hour)>=Date.parse(data.generated_at)-48*3600000),totals=new Map(),grouped=new Map();
+    hourly.forEach(row=>{totals.set(row.model,(totals.get(row.model)||0)+row.total_tokens);grouped.set(`${row.hour}\0${row.model}`,(grouped.get(`${row.hour}\0${row.model}`)||0)+row.total_tokens);});
+    const models=[...totals].sort((x,y)=>y[1]-x[1]).slice(0,6).map(row=>row[0]),hours=[...new Set(hourly.map(row=>row.hour))].sort(),byModel=options();byModel.yAxis.axisLabel.formatter=compact;
+    byModel.series=models.map(name=>line(name,model(name),hours.map(hour=>[hour,grouped.get(`${hour}\0${name}`)||0]),{lineStyle:{width:1.7}}));chart("modelChart",byModel);
   }
+  function renderConsumption() {
+    const artifact=m2Data(),evidence=artifact.evidence||{},candidates=artifact.candidates||[],cycle=artifact.current_cycle||{},current=cycle.current||{},points=cycle.points||[];
+    const status=m2StatusName(artifact.status),explainedCandidates=candidates.filter(item=>item.status==='feasible'||item.status==='approximate').length,fit=artifact.fit_error||{};
+    const residual=valid(fit.constraint_slack_sum_pp)?`；严格约束总残差 ${n(fit.constraint_slack_sum_pp,3)} 个百分点`:'';
+    text('consumptionSummary',`M2 · ${status}。${n(evidence.request_count)} 次原生请求与 ${n(evidence.compressed_observation_count)} 个权威观测共同形成各模型的大致消耗参数${residual}。`);
+    text('consumptionRawError',status);text('consumptionMeterError',`${explainedCandidates} / ${candidates.length||3}`);text('consumptionHit',n(evidence.request_count));text('consumptionTarget',n(evidence.period_count));
+    text('consumptionDrift',`输入截止 ${date(artifact.input_cutoff)}；${n(evidence.raw_observation_count)} 个权威快照压缩为 ${n(evidence.compressed_observation_count)} 个约束点。按“目标机器记录为主要可观测解释”计算，未观测活动与时序、取整差异计入残差。`);
+    text('resetAccountingSummary',cycle.period_start?`${date(cycle.period_start)} 开始的当前周期 · ${m2StatusName(cycle.status)}；曲线由同一套 M2 解释参数计算。`:`M2 当前周期：${m2StatusName(cycle.status)}`);
+    const explained=current.explained_cycle_used_pp??current.explained_used_pp,observed=current.observed_cycle_used_pp??current.actual_used_pp,bandLow=current.explained_cycle_lower_pp??current.explained_lower_pp??current.compatible_lower_pp,bandHigh=current.explained_cycle_upper_pp??current.explained_upper_pp??current.compatible_upper_pp;
+    text('resetExpected',valid(explained)?`${n(explained,2)} 百分点${valid(bandLow)&&valid(bandHigh)?`（对齐 ${n(bandLow,2)}–${n(bandHigh,2)}）`:''}`:'—');text('resetObserved',valid(observed)?n(observed,1)+' 百分点':'—');text('resetResidual',valid(current.fit_residual_pp)?`${Number(current.fit_residual_pp)>=0?'+':''}${n(current.fit_residual_pp,2)} 百分点`:'—');text('resetRatio',cycle.through?date(cycle.through):'—');
+    const value=(row,key,fallback)=>row[key]??row[fallback],chartOption=options();chartOption.yAxis={...chartOption.yAxis,name:'累计扣量（百分点）',nameTextStyle:{align:'left'},min:0};
+    chartOption.series=[line('reset-observed','服务器实测',points.map(row=>[row.time,value(row,'observed_cycle_used_pp','actual_used_pp')]),{step:'end',itemStyle:{color:'#76c6b8'},lineStyle:{color:'#76c6b8',width:2}}),line('m2-explained','按解释得到的曲线',points.filter(row=>valid(value(row,'explained_cycle_used_pp','explained_used_pp'))).map(row=>[row.time,value(row,'explained_cycle_used_pp','explained_used_pp')]),{itemStyle:{color:'#8ab4ef'},lineStyle:{color:'#8ab4ef',width:2.4}}),line('m2-lower','对齐敏感下界',points.filter(row=>valid(row.explained_cycle_lower_pp??row.explained_lower_pp??row.compatible_lower_pp)).map(row=>[row.time,row.explained_cycle_lower_pp??row.explained_lower_pp??row.compatible_lower_pp]),{itemStyle:{color:'#e4b979'},lineStyle:{type:'dashed',color:'#e4b979',width:1.7}}),line('m2-upper','对齐敏感上界',points.filter(row=>valid(row.explained_cycle_upper_pp??row.explained_upper_pp??row.compatible_upper_pp)).map(row=>[row.time,row.explained_cycle_upper_pp??row.explained_upper_pp??row.compatible_upper_pp]),{itemStyle:{color:'#b4a4da'},lineStyle:{type:'dashed',color:'#b4a4da',width:1.7}})];chart('resetAccountingChart',chartOption);
+    $('consumptionRows').innerHTML=points.slice().reverse().map(row=>`<tr><td>${date(row.time)}</td><td>${valid(value(row,'explained_cycle_used_pp','explained_used_pp'))?n(value(row,'explained_cycle_used_pp','explained_used_pp'),2):'—'}</td><td>${valid(row.explained_cycle_lower_pp??row.explained_lower_pp??row.compatible_lower_pp)?n(row.explained_cycle_lower_pp??row.explained_lower_pp??row.compatible_lower_pp,2):'—'}</td><td>${valid(row.explained_cycle_upper_pp??row.explained_upper_pp??row.compatible_upper_pp)?n(row.explained_cycle_upper_pp??row.explained_upper_pp??row.compatible_upper_pp,2):'未限定'}</td><td>${n(value(row,'observed_cycle_used_pp','actual_used_pp'),1)}</td><td>${valid(row.fit_residual_pp)?`${Number(row.fit_residual_pp)>=0?'+':''}${n(row.fit_residual_pp,2)}`:'—'}</td></tr>`).join('')||'<tr><td colspan="6">等待 M2 当前周期证据</td></tr>';
+  }
+  function renderBudgetProfiles() { $("budgetProfile").value="compatibility";text("budgetProfileNote","估算仅使用你填写的 token 与当前 M2 解释参数；上下界表示时间对齐敏感性。");$("calculateBudget").disabled=!budgetModel()||!m2Data().quote_ready||state.budgetBusy; }
+  function renderCalibration() {
+    const artifact=m2Data(),models=artifact.model_parameters||[],evidence=artifact.evidence||{},candidates=artifact.candidates||[];
+    const cell=item=>!item?"—":`<span class="calib-point">${valid(item.reference)?`约 ${n(item.reference,5)}`:'尚无解释点'}</span><small>${item.range_kind==='alignment_sensitivity_box'?'对齐敏感范围':'严格相容范围'} ${valid(item.lower)?n(item.lower,5):'—'}–${valid(item.upper)?n(item.upper,5):'未限定'}</small>`;
+    $("calibrationRows").innerHTML=models.length?models.map(item=>`<tr><td class="model-id">${esc(model(item.model))}</td>${["uncached_input","cached_input","output"].map(key=>`<td class="calib-cell">${cell(item.channels?.[key])}</td>`).join("")}<td>${n(evidence.compressed_observation_count)} 个约束</td><td>M2 ${m2StatusName(artifact.status)}</td></tr>`).join(""):'<tr><td colspan="6">M2 尚未形成可展示的参数集合</td></tr>';
+    text("calibrationSummary",`M2 当前状态：${m2StatusName(artifact.status)}。参考值取最佳解释，对齐敏感范围来自固定 −120、0、120 秒候选；严格检验状态为 ${m2StatusName(artifact.strict_status)}。`);text("calibrationScope","appserver_account_rate_limits · codex:primary");text("calibrationPeriod",date(artifact.input_cutoff));
+    text("calibrationRank",candidates.map(item=>`${item.alignment_offset_seconds} 秒：${m2StatusName(item.status)}${item.strict_status&&item.strict_status!==item.status?`（严格检验 ${m2StatusName(item.strict_status)}）`:''}`).join("；")||"—");text("calibrationValidation",`${n(evidence.request_count)} 次请求`);text("calibrationBaselines",`${n(evidence.raw_observation_count)} → ${n(evidence.compressed_observation_count)} 个观测`);text("calibrationTolerance",artifact.evidence_mode==='reconstructed'?'重建证据；到达时钟仍需升级':'严格事前证据');
+    if(!state.budgetModel)state.budgetModel=models.find(item=>item.model==="gpt-5.6-luna")?.model||models[0]?.model||"";
+    $("budgetModel").innerHTML=models.map(item=>`<option value="${esc(item.model)}">${esc(model(item.model))}</option>`).join("")||'<option value="">暂无可用模型</option>';$("budgetModel").value=state.budgetModel;renderBudgetProfiles();
+    if(state.budgetResultId&&artifact.m2_id!==state.budgetResultId)text("budgetRange","M2 证据已更新；保留了你的输入，选择计算可更新预算。");
+  }
+  async function calculateBudget() {
+    if(state.budgetBusy||!budgetModel())return;$("budgetError").classList.add("hidden");
+    const revision=state.budgetRevision,values=["budgetCalls","budgetUncached","budgetCached","budgetOutput"].map(id=>$(id).value);
+    if(values.some(value=>String(value??"").trim()===""||!Number.isFinite(Number(value))||Number(value)<0||Number(value)>1e9)){text("budgetError","请填写0至10亿之间的有限非负数。");$("budgetError").classList.remove("hidden");return;}
+    const [calls,uncached_input,cached_input,output]=values.map(Number);state.budgetBusy=true;$("calculateBudget").disabled=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+    try{const response=await fetch("./api/forecast-v2/m2/quote",{method:"POST",headers:{"Content-Type":"application/json"},signal:controller.signal,body:JSON.stringify({items:[{model:state.budgetModel,calls,uncached_input,cached_input,output}]})});const result=await response.json();if(!response.ok)throw Error(result.error||result.message||`预算读取失败 HTTP ${response.status}`);if(revision!==state.budgetRevision)return;state.budgetResultId=result.m2_id;text("budgetEstimate",result.estimate_pp<=1e-10?"M2 解释点触及零边界，不能理解为免费":`按解释估算约 ${n(result.estimate_pp,5)} 个百分点`);text("budgetRange",`时间对齐敏感范围：${n(result.lower_pp,5)}–${valid(result.upper_pp)?n(result.upper_pp,5):"尚无有限上界"} 个百分点。只计填写的调用 token；有误差，且范围不是概率区间。`);}catch(error){if(revision===state.budgetRevision){text("budgetError",error.name==="AbortError"?"预算计算超时，请稍后重试。":error.message);$("budgetError").classList.remove("hidden");}}finally{clearTimeout(timeout);state.budgetBusy=false;$("calculateBudget").disabled=!budgetModel();}
+  }
+  function downloadJson(filename,value){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:"application/json"})),anchor=document.createElement("a");anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function render() {
     if (!state.data) return;
-    renderTaskForecast(state.data.adaptive||{});
-    ({overview: renderOverview, details: renderDetails}[state.view])();
+    renderM3Forecast(state.data.adaptive||{});
+    ({overview: renderOverview, usage: renderUsage}[state.view])();
     text("generated", `快照 ${date(state.data.generated_at)} · 北京时间`);
   }
   function selectView(view) {
@@ -514,14 +586,23 @@
     text("viewTitle", names[view]); history.replaceState(null, "", `#${view}`); render();
     requestAnimationFrame(resizeCharts);
   }
+  async function digest(bytes){return [...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(value=>value.toString(16).padStart(2,"0")).join("");}
+  async function decode(bytes){return JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text());}
   async function load() {
-    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 30000);
+    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
+    const get=async path=>{const response=await fetch(path,{cache:"no-store",signal:controller.signal});if(!response.ok)throw new Error(`读取失败 HTTP ${response.status}`);return response;};
     try {
-      const response=await fetch(`./api/dashboard?t=${Date.now()}`,{cache:'no-store',signal:controller.signal});
-      if(!response.ok)throw new Error(`读取失败 HTTP ${response.status}`);
-      const result=await response.json();if(!result.snapshot?.adaptive)throw new Error('额度快照尚未就绪，请稍后刷新');
-      return {data:result.snapshot,sourceMode:result.mode,privacy:result.privacy,offline:false};
-    } finally { clearTimeout(timeout); }
+      let incoming;
+      const api=await fetch(`./api/dashboard?t=${Date.now()}`,{cache:"no-store",signal:controller.signal});
+      if(api.ok){const result=await api.json();if(!result.snapshot?.adaptive)throw new Error("额度快照尚未就绪，请稍后刷新");incoming={data:result.snapshot,sourceMode:result.mode,privacy:result.privacy,offline:false};}
+      else if(api.status===404){const pointer=await (await get(`./control/latest.json?t=${Date.now()}`)).json(),bytes=await (await get(`./${pointer.path}?h=${pointer.sha256}`)).arrayBuffer();if(await digest(bytes)!==pointer.sha256)throw new Error("数据校验未通过，请稍后刷新");const data=await decode(bytes);if(!data.adaptive)throw new Error("额度快照尚未就绪，请稍后刷新");incoming={data,pointer,sourceMode:"host_adapter",privacy:"local_state_not_exposed",offline:false};}
+      else throw new Error(`读取失败 HTTP ${api.status}`);
+      try{if("caches" in window){const cache=await caches.open("codex-quota-system-v31");await cache.put("./last-view",new Response(JSON.stringify(incoming),{headers:{"content-type":"application/json"}}));}}catch{/* 缓存失败不能隐藏新快照。 */}
+      return incoming;
+    } catch(error) {
+      try{if("caches" in window){const cached=await (await caches.open("codex-quota-system-v31")).match("./last-view");if(cached)return {...await cached.json(),offline:true};}}catch{/* 保留原始读取错误。 */}
+      throw error;
+    } finally {clearTimeout(timeout);}
   }
   async function refresh() {
     if(state.rulerDragging||state.rangeSwitching){state.refreshQueued=true;return;}
@@ -542,6 +623,13 @@
   $('quotaResetZoom').addEventListener('click',()=>{if(!state.quotaSelectionBase)return;const range={...state.quotaSelectionBase,anchor:'fixed',span:null};state.quotaSelectionBase=null;selectRange(range);});
   $('quotaChart').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Enter','Escape'].includes(event.key))return;event.preventDefault();if(event.key==='Escape'){state.quotaSelectedTime=null;charts.get('quotaChart')?.dispatchAction({type:'hideTip'});return;}const r=state.timeRange,step=event.shiftKey?3600000:60000;const t=Math.max(r.start,Math.min(r.end,(state.quotaSelectedTime??r.start)+(event.key==='ArrowRight'?step:event.key==='ArrowLeft'?-step:0)));showRuntimeDetails(t);const c=charts.get('quotaChart');if(c){const b=$('quotaChart').getBoundingClientRect();state.plotCursor={x:b.left+c.convertToPixel({xAxisIndex:0},t),y:b.top+b.height*.45};restorePlotPointer();}});
   $("refresh").addEventListener("click", refresh);
+  $("budgetModel").addEventListener("change",event=>{state.budgetModel=event.target.value;state.budgetRevision++;state.budgetResultId=null;renderBudgetProfiles();text("budgetEstimate","模型已更改，请重新计算");});
+  $("budgetProfile").addEventListener("change",renderBudgetProfiles);
+  for(const id of ["budgetCalls","budgetUncached","budgetCached","budgetOutput"])$(id).addEventListener("input",()=>{state.budgetRevision++;state.budgetResultId=null;text("budgetEstimate","输入已更改，请重新计算");});
+  $("calculateBudget").addEventListener("click",calculateBudget);
+  $("exportM2").addEventListener("click",()=>downloadJson("codex-quota-m2.json",m2Data()));
+  $("exportM3").addEventListener("click",()=>downloadJson("codex-quota-m3.json",m3Data()));
+  $("exportData").addEventListener("click",()=>state.data&&downloadJson(`codex-quota-${new Date().toISOString().slice(0,10)}.json`,state.data));
   window.addEventListener("resize", resizeCharts);
   window.addEventListener("hashchange", () => selectView(location.hash.slice(1)));
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

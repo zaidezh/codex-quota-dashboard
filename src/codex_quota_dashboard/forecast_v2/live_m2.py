@@ -324,6 +324,14 @@ def _comparison_points(
             collapsed.append(row)
     collapsed = collapsed[-32:]
     anchor = cycle_rows[0]
+    anchor_used = float(anchor["used_percent"])
+
+    def cycle_value(change: float | None) -> float | None:
+        if change is None:
+            return None
+        value = anchor_used + float(change)
+        return max(0.0, min(100.0, value)) if math.isfinite(value) else None
+
     points: list[dict[str, Any]] = []
     for row in collapsed:
         bounds: list[Mapping[str, Any]] = []
@@ -379,6 +387,11 @@ def _comparison_points(
             "explained_upper_pp": upper,
             "compatible_lower_pp": lower,
             "compatible_upper_pp": upper,
+            "anchor_observed_used_pp": anchor_used,
+            "observed_cycle_used_pp": float(row["used_percent"]),
+            "explained_cycle_used_pp": cycle_value(explained),
+            "explained_cycle_lower_pp": cycle_value(lower),
+            "explained_cycle_upper_pp": cycle_value(upper),
             "status": point_status,
         })
     residuals = [abs(float(point["fit_residual_pp"])) for point in points if point.get("fit_residual_pp") is not None]
@@ -624,10 +637,54 @@ def quote_m2(artifact: Mapping[str, Any], items: Iterable[Mapping[str, Any]] | N
             if not math.isfinite(amount) or amount < 0:
                 raise ValueError(f"items[{index}].{channel} 必须是有限非负数")
             totals[model][channel] += calls * amount
+    candidates = list(artifact.get("_solver_candidates", []))
+    if not candidates:
+        parameters = {
+            str(item.get("model")): item.get("channels") or {}
+            for item in artifact.get("model_parameters", [])
+            if isinstance(item, Mapping) and item.get("model")
+        }
+        estimate = 0.0
+        lower = 0.0
+        upper = 0.0
+        upper_unbounded = False
+        for model, channels in totals.items():
+            model_parameters = parameters.get(model)
+            if not isinstance(model_parameters, Mapping):
+                raise ValueError("M2 当前没有可用解释参数")
+            for channel, token_count in channels.items():
+                if token_count <= 0:
+                    continue
+                item = model_parameters.get(channel)
+                if not isinstance(item, Mapping):
+                    raise ValueError("M2 当前没有可用解释参数")
+                scale = token_count / 1_000_000.0
+                reference = item.get("reference")
+                lower_value = item.get("lower")
+                if reference is None or lower_value is None:
+                    raise ValueError("M2 当前没有可用解释参数")
+                estimate += scale * float(reference)
+                lower += scale * float(lower_value)
+                if item.get("upper") is None:
+                    upper_unbounded = True
+                else:
+                    upper += scale * float(item["upper"])
+        return {
+            "schema_version": 1,
+            "m2_id": artifact.get("m2_id"),
+            "estimate_pp": estimate,
+            "lower_pp": lower,
+            "upper_pp": None if upper_unbounded else upper,
+            "fit_status": artifact.get("status"),
+            "strict_status": artifact.get("strict_status"),
+            "fit_error": artifact.get("fit_error"),
+            "range_kind": artifact.get("range_kind"),
+            "not_a_probability_interval": True,
+            "domain_warnings": [],
+        }
     budgets: list[Mapping[str, Any]] = []
     estimate = None
     selected_offset = artifact.get("selected_alignment_offset_seconds")
-    candidates = list(artifact.get("_solver_candidates", []))
     if artifact.get("status") == "approximate":
         design = artifact.get("_projection_design") or {}
         if not design:

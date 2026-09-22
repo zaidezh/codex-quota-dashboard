@@ -8,6 +8,9 @@ retention_days = 35
 [bootstrap_reference]
 # off | bundled | path. Change this value explicitly to enable a startup reference.
 mode = "off"
+# Numeric target capacity relative to the selected reference asset. This is never
+# inferred from a commercial plan label.
+capacity_multiplier = 1.0
 # path = "./references/custom-bootstrap.json"
 
 [monitoring]

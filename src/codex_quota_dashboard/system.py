@@ -7,7 +7,7 @@ from contextlib import closing
 from hashlib import sha256
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
 import os
@@ -63,44 +63,6 @@ def _latest_limit(db: Any) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def _task_forecast_projection(m3: Mapping[str, Any]) -> dict[str, Any]:
-    points: list[dict[str, Any]] = []
-    for item in m3.get("points") or []:
-        band = item.get("compatibility_used_pp") if isinstance(item.get("compatibility_used_pp"), Mapping) else {}
-        expected = item.get("expected_used_pp")
-        if expected is None:
-            continue
-        lower = band.get("lower_used_pp")
-        upper = band.get("upper_used_pp")
-        points.append(
-            {
-                "time": item.get("time"),
-                "median": float(expected),
-                "lower": float(lower) if lower is not None else float(expected),
-                "upper": float(upper) if upper is not None else float(expected),
-                "value_kind": "expected_explanation_projection",
-                "range_kind": band.get("range_kind"),
-            }
-        )
-    return {
-        "status": m3.get("status"),
-        "version": m3.get("version"),
-        "issued_at": m3.get("issued_at") or m3.get("generated_at"),
-        "as_of": m3.get("input_cutoff"),
-        "reset_at": m3.get("horizon_end"),
-        "points": points,
-        "tasks": [],
-        "minute_history": [],
-        "thread_distribution": {"status": "unavailable", "coverage": "unavailable", "points": []},
-        "semantic_weight": 0,
-        "semantic_tasks": 0,
-        "scheduled": {"jobs": []},
-        "warning": "这是按 M2 参数和当前工作负载假设形成的条件走势，不是概率保证。",
-        "reference_source": m3.get("reference_source"),
-        "reference_id": m3.get("reference_id"),
-    }
-
-
 def build_snapshot(config: SystemConfig, now: datetime | None = None) -> dict[str, Any]:
     if config.database_path is None:
         raise RuntimeError("state.directory is required to build a snapshot")
@@ -126,6 +88,7 @@ def build_snapshot(config: SystemConfig, now: datetime | None = None) -> dict[st
             m2,
             _latest_limit(db),
             bootstrap_reference_path=bootstrap_path(config),
+            bootstrap_capacity_multiplier=config.bootstrap_reference.capacity_multiplier,
             now=now,
             lookback_minutes=config.local_fitting.workload_lookback_minutes,
             path_count=config.local_fitting.path_count,
@@ -148,11 +111,11 @@ def build_snapshot(config: SystemConfig, now: datetime | None = None) -> dict[st
             "monitoring_enabled": config.monitoring.enabled,
             "local_fitting_enabled": config.local_fitting.enabled,
             "bootstrap_mode": config.bootstrap_reference.mode,
+            "bootstrap_capacity_multiplier": config.bootstrap_reference.capacity_multiplier,
             "retention_days": config.state.retention_days,
         },
         "forecast_v2": {"m1": m1, "m2": compact_m2(m2), "m3": m3},
         "adaptive": m1,
-        "task_forecast": _task_forecast_projection(m3),
     }
     snapshot["snapshot_id"] = stable_id(
         "codex-quota-system-snapshot",

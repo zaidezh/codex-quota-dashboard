@@ -1,7 +1,7 @@
 {
   "schema": "codex-quota-bootstrap-manifest-v1",
   "asset": "bootstrap-reference-v1.json",
-  "sha256": "a4daaa8b5038b2cdd88b6cce4546baeef9816d7f42a1541da1bb8411c4195c0b",
+  "sha256": "6abe8569c441c12335f115057cfc0b8286e06a0e18174e52c32517af051aa0bd",
   "reference_id": "codex-quota-bootstrap-reference-2026-09-v1",
   "status": "reference_only",
   "derivation": "allowlisted fitted coefficients rounded and paired with conservatively expanded bounds",
@@ -10,6 +10,7 @@
     "token channel identifiers",
     "coarsened reference coefficients",
     "conservative lower and upper bounds",
+    "normalized reference capacity unit and deterministic scaling rule",
     "unit, use contract, limitations and license"
   ],
   "excluded_classes": [

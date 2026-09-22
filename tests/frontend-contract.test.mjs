@@ -27,7 +27,12 @@ test("homepage carries the complete quota-trend interaction surface", () => {
     "runtimeDetailRows",
     "scenarioRemaining",
     "scenarioHitting",
-    "m2ParameterRows",
+    "resetAccountingChart",
+    "calibrationRows",
+    "budgetModel",
+    "calculateBudget",
+    "dailyChart",
+    "modelChart",
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
   }
@@ -37,17 +42,23 @@ test("homepage carries the complete quota-trend interaction surface", () => {
   assert.match(script, /ArrowRight/);
 });
 
-test("standalone frontend does not retain unrelated monitor views", () => {
-  assert.doesNotMatch(html, /VPS 状态|本机状态/);
-  assert.doesNotMatch(script, /function renderVps|function renderHostCharts|function renderUsage/);
-  assert.doesNotMatch(html, /全新电脑|独立 viewer|合成演示/);
-  assert.doesNotMatch(script, /合成演示|DemoSource|LiveSource/);
-  assert.match(html, /M1–M3 数据口径/);
+test("standalone frontend exposes only the overview and usage views", () => {
+  const views = [...html.matchAll(/data-view=["']([^"']+)["']/g)].map((match) => match[1]);
+  assert.deepEqual(views, ["overview", "usage"]);
+  assert.doesNotMatch(script, /function renderHostCharts/);
+  assert.match(html, /M2 此次重置后的实测对照/);
+  assert.match(script, /function renderUsage/);
   assert.match(script, /local_m2_explanation/);
+  assert.match(script, /本地 M2 解释 · 自动同构/);
+  assert.match(script, /启动参考 · 目标容量/);
+  assert.match(styles, /\.reset-accounting \.small-chart \{ height: 705px; \}/);
 });
 
 test("overview formula is bound to the current M2 explanation", () => {
   assert.match(script, /current_cycle\?\.current/);
+  assert.match(script, /explained_cycle_used_pp\?\?m2Current\.explained_used_pp/);
+  assert.match(script, /explained_cycle_lower_pp/);
+  assert.match(script, /explained_cycle_upper_pp/);
   assert.match(script, /100-explainedUsed/);
   assert.match(html, /解释预测剩余额度/);
 });
