@@ -81,9 +81,6 @@ def project_snapshot(snapshot: dict[str, Any], *, show_local_titles: bool = Fals
 
     adaptive = snapshot.get("adaptive") if isinstance(snapshot.get("adaptive"), dict) else {}
     task = snapshot.get("task_forecast") if isinstance(snapshot.get("task_forecast"), dict) else {}
-    consumption = snapshot.get("consumption_explanation") if isinstance(snapshot.get("consumption_explanation"), dict) else {}
-    review = snapshot.get("forecast_review") if isinstance(snapshot.get("forecast_review"), dict) else {}
-    calibration = snapshot.get("token_calibration") if isinstance(snapshot.get("token_calibration"), dict) else {}
 
     result: dict[str, Any] = _select(snapshot, ("schema_version", "generated_at", "timezone", "authority"))
     result["adaptive"] = _select(
@@ -92,16 +89,11 @@ def project_snapshot(snapshot: dict[str, Any], *, show_local_titles: bool = Fals
             "status",
             "version",
             "latest",
-            "actual",
-            "boundaries",
-            "forecast",
             "valid_history_hours",
             "matched_model_hours",
             "recent_rate_pp_hour",
             "pace_budget",
             "scenario",
-            "activity",
-            "model_rows",
         ),
     )
 
@@ -116,10 +108,7 @@ def project_snapshot(snapshot: dict[str, Any], *, show_local_titles: bool = Fals
             "current_rate_pp_minute",
             "semantic_weight",
             "points",
-            "minute_history",
-            "validation",
             "warning",
-            "observer",
             "semantic_tasks",
             "as_of",
         ),
@@ -148,14 +137,6 @@ def project_snapshot(snapshot: dict[str, Any], *, show_local_titles: bool = Fals
         "effort",
         "tier",
         "status",
-        "progress",
-        "rate_pp_minute",
-        "duration_basis",
-        "goal_runtime_status",
-        "remaining_minutes",
-        "requests_15m",
-        "activity_fraction",
-        "continuation_deferred",
         "is_observer",
     )
     projected_tasks = []
@@ -169,28 +150,15 @@ def project_snapshot(snapshot: dict[str, Any], *, show_local_titles: bool = Fals
         projected_tasks.append(projected)
     task_view["tasks"] = projected_tasks
 
-    continuing = task.get("continuing_work") if isinstance(task.get("continuing_work"), dict) else {}
-    continuing_view = _select(continuing, ("source", "assumption", "goal_duration_unknown"))
-    profiles = []
-    for index, item in enumerate(continuing.get("profiles") or [], start=1):
-        if not isinstance(item, dict):
-            continue
-        projected = _select(item, ("title", "status", "remaining_minutes", "request_count", "reason"))
-        if not show_local_titles:
-            projected["title"] = f"持续目标 {index}"
-        profiles.append(projected)
-    continuing_view["profiles"] = profiles
-    task_view["continuing_work"] = continuing_view
-
     scheduled = task.get("scheduled") if isinstance(task.get("scheduled"), dict) else {}
-    scheduled_view = _select(scheduled, ("issues", "horizon_end", "overlap_policy"))
+    scheduled_view = _select(scheduled, ("horizon_end", "overlap_policy"))
     jobs = []
     for index, item in enumerate(scheduled.get("jobs") or [], start=1):
         if not isinstance(item, dict):
             continue
         projected = _select(
             item,
-            ("name", "status", "basis", "history_runs", "forecast_runs", "next_runs", "cost_per_run", "duration_minutes"),
+            ("name", "status", "basis"),
         )
         if not show_local_titles:
             projected["name"] = f"定时任务 {index}"
@@ -198,42 +166,6 @@ def project_snapshot(snapshot: dict[str, Any], *, show_local_titles: bool = Fals
     scheduled_view["jobs"] = jobs
     task_view["scheduled"] = scheduled_view
     result["task_forecast"] = task_view
-
-    consumption_view = _select(
-        consumption,
-        ("status", "version", "computed_at", "purpose", "warning", "validation", "drift", "reset_comparison"),
-    )
-    consumption_view["rows"] = copy.deepcopy((consumption.get("rows") or [])[-50:])
-    result["consumption_explanation"] = consumption_view
-
-    review_view = _select(review, ("version", "automatic_application", "issues", "evaluations", "reason_counts"))
-    review_view["candidates"] = copy.deepcopy((review.get("candidates") or [])[-12:])
-    review_view["recent"] = copy.deepcopy((review.get("recent") or [])[-20:])
-    result["forecast_review"] = review_view
-
-    result["token_calibration"] = _select(
-        calibration,
-        (
-            "schema_version",
-            "version",
-            "status",
-            "calibration_id",
-            "generated_at",
-            "training_blocks",
-            "feature_count",
-            "matrix_rank",
-            "training_start",
-            "training_end",
-            "unit",
-            "official_tariff",
-            "probability_calibrated",
-            "models",
-            "scope",
-            "validation",
-            "alignment_sensitivity",
-            "notes",
-        ),
-    )
     return result
 
 
@@ -251,7 +183,7 @@ class DemoSource:
         return project_snapshot(build_demo_snapshot(), show_local_titles=self.show_local_titles)
 
     def history(self, query: dict[str, list[str]]) -> dict[str, Any]:
-        snapshot = self.snapshot()
+        snapshot = build_demo_snapshot()
         points = snapshot.get("adaptive", {}).get("actual", [])
         default_start = points[0]["time"] if points else snapshot["generated_at"]
         default_end = snapshot.get("task_forecast", {}).get("reset_at") or snapshot["generated_at"]
@@ -294,7 +226,7 @@ class DemoSource:
         }
 
     def runtime(self, query: dict[str, list[str]]) -> dict[str, Any]:
-        snapshot = self.snapshot()
+        snapshot = build_demo_snapshot()
         at = (query.get("at") or [snapshot["generated_at"]])[-1]
         threads = [
             {
@@ -312,7 +244,7 @@ class DemoSource:
         return {"status": "ok", "time": at, "count": len(threads), "covered": True, "threads": threads}
 
     def quote(self, payload: dict[str, Any]) -> dict[str, Any]:
-        snapshot = self.snapshot()
+        snapshot = build_demo_snapshot()
         calibration = snapshot.get("token_calibration", {})
         models = {item.get("model"): item for item in calibration.get("models", []) if isinstance(item, dict)}
         estimate = lower = upper = 0.0

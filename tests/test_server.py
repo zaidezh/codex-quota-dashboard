@@ -17,6 +17,9 @@ class ProjectionTests(unittest.TestCase):
         snapshot["task_forecast"]["tasks"][0]["session_id"] = "private-session"
         snapshot["task_forecast"]["thread_distribution"]["unknown"] = [{"thread": "private-thread"}]
         snapshot["task_forecast"]["thread_distribution"]["basis"] = [{"turn_id": "private-turn"}]
+        snapshot["adaptive"]["activity"]["open_turns"] = [{"session_id": "private-activity"}]
+        snapshot["task_forecast"]["continuing_work"]["source"] = {"states": [{"thread_id": "private-goal"}]}
+        snapshot["forecast_review"]["recent"][0]["interventions"] = [{"session_id": "private-review"}]
         original_title = snapshot["task_forecast"]["tasks"][0]["title"]
 
         projected = project_snapshot(snapshot)
@@ -28,6 +31,9 @@ class ProjectionTests(unittest.TestCase):
         self.assertTrue(projected["task_forecast"]["thread_distribution"]["points"])
         self.assertNotIn("unknown", projected["task_forecast"]["thread_distribution"])
         self.assertNotIn("basis", projected["task_forecast"]["thread_distribution"])
+        serialized = json.dumps(projected)
+        for private_value in ("private-session", "private-thread", "private-turn", "private-activity", "private-goal", "private-review"):
+            self.assertNotIn(private_value, serialized)
 
     def test_projection_can_show_titles_only_when_explicit(self) -> None:
         snapshot = build_demo_snapshot()
