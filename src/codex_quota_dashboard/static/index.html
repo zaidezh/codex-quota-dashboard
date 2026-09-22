@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta name="codex-ui-version" content="quota-rulers-v17-standalone">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#11171e">
+  <meta name="color-scheme" content="dark">
+  <title>Codex 额度走势</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./styles.css?v=quota-rulers-v17-standalone">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview"><strong>Codex</strong><span>额度走势</span></a>
+      <nav aria-label="额度视图">
+        <button type="button" class="nav-item active" data-view="overview" aria-current="page">额度走势</button>
+        <button type="button" class="nav-item" data-view="details">说明与边界</button>
+      </nav>
+      <div class="sidebar-note"><span>自动更新</span><strong>每 60 秒</strong><p id="sourceMode">正在确认数据源</p></div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div><p class="overline">使用情况与额度规划</p><h1 id="viewTitle">Codex 额度走势</h1></div>
+        <div class="toolbar"><span id="modeBadge" class="mode-badge">正在连接</span><span id="freshness" class="status-label">正在读取</span><button id="refresh" class="button" type="button">立即刷新</button></div>
+      </header>
+      <div id="error" class="notice error hidden" role="alert"></div>
+      <div id="offline" class="notice hidden">连接暂不可用；实时模式不会自动降级为演示数据。</div>
+
+      <section id="view-overview" class="view">
+        <div class="metrics overview-metrics">
+          <article class="metric primary"><span>Codex 剩余额度</span><strong id="remainingQuota">—</strong><small id="quotaUsed">等待服务器观测</small></article>
+          <article class="metric"><span>距离额度重置</span><strong id="resetCountdown">—</strong><small id="resetAt">—</small></article>
+        </div>
+        <article class="panel quota-panel">
+          <div class="panel-head"><div><h2>Codex 额度走势</h2><p id="forecastSummary">根据实际额度变化和近期模型使用，自动选择参考历史。</p></div>
+          </div>
+          <p id="quotaRangeSummary" class="footnote"></p><p id="rangeAnchorStatus" class="footnote" role="status"></p><p id="quotaHistoryError" class="notice hidden" role="status"></p>
+          <details id="quotaForecastContext" class="forecast-context"><summary>预测假设与范围</summary><p id="scenarioAssumption" class="scenario-assumption">假设用户不再干预，当前任务树自行推进；每分钟重新计算。</p></details>
+          <p id="quotaBoundaryNotice" class="explanation hidden"></p>
+          <details id="quotaBoundaryDetails" class="boundary-details hidden"><summary id="quotaBoundarySummary">查看变化明细</summary><div class="table-scroll"><table><thead><tr><th>观测时间</th><th>类型</th><th>剩余额度</th><th>重置时间变化</th></tr></thead><tbody id="quotaBoundaryRows"></tbody></table></div></details>
+          <div class="chart-legend"><span><i class="sample-line actual"></i>服务器实际</span><span id="quotaForecastLegend"><i class="sample-line projected"></i>预计走势（无人干预）</span><span id="quotaBandLegend"><i class="sample-band"></i>不确定范围</span></div>
+          <div id="compositionLegend" class="composition-legend"></div><p id="compositionCoverage" class="footnote"></p>
+          <div id="quotaChart" class="chart quota-chart" tabindex="0" aria-label="额度走势与运行构成；左右键移动时间指针，点击查看明细，指针继续跟随"></div>
+          <div class="chart-rulers" aria-label="图表时间刻度"><div class="ruler-endpoint" id="rulerStart" role="group" aria-label="开始时间">
+ <div class="ruler-readline ruler-date-row"><div class="ruler-month-labels" aria-hidden="true"><span>1月</span><span>4月</span><span>7月</span><span>10月</span><span>12月</span></div><div class="ruler-readout" id="rulerStartDateReadout"><select id="rangeStartYear" aria-label="开始年份"></select><button id="rulerStartDateButton" type="button" aria-label="开始精确日期"></button><select id="rangePreset" aria-label="快捷时间范围"><option value="custom">自定义</option><option value="24h">24小时</option><option value="7d">重置前七天</option><option value="reset" hidden>重置前七天</option></select><button id="quotaResetZoom" type="button" title="恢复缩放前范围" aria-label="恢复缩放前范围" hidden>恢复范围</button></div><div id="rulerStartDateEditor" class="ruler-date-editor hidden"><input id="rangeStartDate" type="date" aria-label="开始精确日期输入"></div></div>
+ <div class="ruler-rail date-rail"><span class="ruler-selection" id="rulerStartDateSelection"></span><span class="ruler-ghost" id="rulerStartDateGhost"></span><input id="rangeStartDay" type="range" min="0" max="364" step="1" aria-label="开始全年日期刻度"></div>
+ <div class="ruler-rail time-rail"><span class="ruler-selection" id="rulerStartTimeSelection"></span><span class="ruler-ghost" id="rulerStartTimeGhost"></span><input id="rangeStartMinute" type="range" min="0" max="1440" step="1" aria-label="开始24小时时间刻度"></div>
+ <div class="ruler-readline ruler-time-row"><div class="ruler-hour-labels" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div><div class="ruler-readout" id="rulerStartTimeReadout"><input id="rangeStartTime" type="text" inputmode="numeric" aria-label="开始精确时间" maxlength="5"></div></div>
+</div><div class="ruler-endpoint" id="rulerEnd" role="group" aria-label="结束时间">
+ <div class="ruler-readline ruler-date-row"><div class="ruler-month-labels" aria-hidden="true"><span>1月</span><span>4月</span><span>7月</span><span>10月</span><span>12月</span></div><div class="ruler-readout" id="rulerEndDateReadout"><select id="rangeEndYear" aria-label="结束年份"></select><button id="rulerEndDateButton" type="button" aria-label="结束精确日期"></button><select id="rangeEndAnchor" aria-label="结束锚点"><option value="fixed">固定</option><option value="now">现在</option><option value="reset">下次重置</option></select></div><div id="rulerEndDateEditor" class="ruler-date-editor hidden"><input id="rangeEndDate" type="date" aria-label="结束精确日期输入"></div></div>
+ <div class="ruler-rail date-rail"><span class="ruler-selection" id="rulerEndDateSelection"></span><span class="ruler-ghost" id="rulerEndDateGhost"></span><input id="rangeEndDay" type="range" min="0" max="364" step="1" aria-label="结束全年日期刻度"></div>
+ <div class="ruler-rail time-rail"><span class="ruler-selection" id="rulerEndTimeSelection"></span><span class="ruler-ghost" id="rulerEndTimeGhost"></span><input id="rangeEndMinute" type="range" min="0" max="1440" step="1" aria-label="结束24小时时间刻度"></div>
+ <div class="ruler-readline ruler-time-row"><div class="ruler-hour-labels" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div><div class="ruler-readout" id="rulerEndTimeReadout"><input id="rangeEndTime" type="text" inputmode="numeric" aria-label="结束精确时间" maxlength="5"></div></div>
+</div></div><p id="rulerStatus" class="footnote" role="status"></p>
+          <details id="runtimeDetails" class="boundary-details"><summary>查看指针时刻的线程明细</summary><p id="runtimeDetailTime" class="footnote">点击图表或用左右键选择时刻</p><div class="table-scroll"><table><thead><tr><th>任务</th><th>模型 / 思考深度</th><th>来源 / 边界</th></tr></thead><tbody id="runtimeDetailRows"></tbody></table></div></details>
+          <div id="quotaFutureResults" class="scenario-results"><div><span id="scenarioEndLabel">预测终点剩余</span><strong id="scenarioRemaining">—</strong></div><div><span>主曲线达到 100% 的时刻</span><strong id="scenarioHitting">—</strong></div></div>
+          <div class="chart-footer"><span id="quotaObservation">—</span><span id="quotaScopeNote">模拟范围含取整敏感性；不是保证概率或因果结论</span></div>
+        </article>
+      </section>
+
+      <section id="view-details" class="view hidden">
+        <div class="metrics detail-metrics">
+          <article class="metric"><span>预测状态</span><strong id="forecastState" class="compact-value">—</strong><small id="forecastSample">等待快照</small></article>
+          <article class="metric"><span>数据模式</span><strong id="detailMode" class="compact-value">—</strong><small id="privacyMode">本机标题默认匿名化</small></article>
+        </div>
+        <article class="panel method-panel">
+          <div class="panel-head"><div><h2>数据口径与边界</h2><p>这个页面保留原“Codex 额度走势”的交互；后台只读代理负责校验快照并裁剪公开字段。</p></div></div>
+          <div class="method-grid">
+            <div><h3>服务器实际</h3><p>账户窗口的已用百分比；不是单个任务、模型或 token 的官方价目。</p></div>
+            <div><h3>条件预测</h3><p>沿用当前任务、定时任务和可证实续跑条件；用户新增工作后会重新签发。</p></div>
+            <div><h3>不确定范围</h3><p>表达输入、对齐与任务边界敏感性，不是已校准概率，也不是保证。</p></div>
+            <div><h3>隐私</h3><p>实时模式默认隐藏本机任务标题、线程标识与主机名；公开仓库不包含账户快照。</p></div>
+          </div>
+          <p id="scenarioEvidence" class="footnote">等待预测证据。</p>
+        </article>
+        <article class="panel">
+          <h2>开源运行方式</h2>
+          <p class="subheading">默认启动纯合成演示。显式指定本机上游后，才会读取兼容监控台；上游不可用时不会静默混入演示数据。</p>
+          <dl class="facts"><div><dt>当前数据源</dt><dd id="detailsSource">—</dd></div><div><dt>快照时间</dt><dd id="detailsGenerated">—</dd></div><div><dt>预测签发</dt><dd id="detailsIssued">—</dd></div><div><dt>隐私投影</dt><dd id="detailsPrivacy">—</dd></div></dl>
+        </article>
+      </section>
+
+      <footer><span id="generated">—</span><span>独立只读前端 · loopback-first</span></footer>
+    </main>
+  </div>
+  <script src="./vendor/echarts.min.js"></script>
+  <script src="./app.js?v=quota-rulers-v17-standalone"></script>
+</body>
+</html>

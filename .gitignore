@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+node_modules/
+playwright-report/
+test-results/
+.env
+.env.*
+*.log
+*.tmp
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/
+screenshots/private/
