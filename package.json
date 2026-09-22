@@ -1,11 +1,11 @@
 {
-  "name": "codex-quota-dashboard-ui",
-  "version": "0.1.0",
+  "name": "codex-quota-system-ui",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test tests/frontend-contract.test.mjs",
-    "test:python": "python -m unittest discover -s tests -p test_*.py",
+    "test:python": "python -m pytest -q",
     "test:e2e": "node tests/e2e.mjs"
   },
   "devDependencies": {

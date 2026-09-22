@@ -1,137 +1,207 @@
-# Codex Quota Dashboard
+# Codex Quota System
 
 [![CI](https://github.com/zaidezhang728-arch/codex-quota-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/zaidezhang728-arch/codex-quota-dashboard/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-2ea44f.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776ab.svg)](pyproject.toml)
 
-把现有监控台的“Codex 额度走势”完整拆成一个可独立运行、可公开审阅的本机前端。主页保留原模块的 DOM、视觉语言和交互；后台只读连接兼容数据源，并在浏览器收到数据前完成完整性校验与隐私投影。
+Codex Quota System 是本地优先的额度证据、解释拟合与条件走势系统。它把
+服务器额度观测和显式选择的本地 token 记录组织为一条 M1 → M2 → M3
+能力链，并通过只读 Web 页面展示实际余额、按解释得到的当前余额和未来条件走势。
 
 > Community project. Not affiliated with or endorsed by OpenAI.
 
-> [!IMPORTANT]
-> 本仓库是额度走势的独立 viewer，不包含原监控系统的采集、历史拟合或 `forecast_v2` 预测引擎。默认模式即时生成明确标记的合成演示数据；实时模式只读显示兼容上游已经计算出的预测。全新电脑可以独立运行演示，但仅安装本仓库不能生成真实账户预测。
+![Codex 额度走势：重置前七天](docs/overview-reset-7d.png)
 
-![Codex Quota Dashboard synthetic demo](docs/dashboard-demo.png)
+## 核心能力
 
-## 主页包含什么
-
-- 服务器实际额度、无人追加任务条件下的预测主曲线与不确定范围；
-- 已观测与预计运行构成、并发着色和缺测提示；
-- “24 小时 / 重置前七天 / 自定义”范围、双端时间标尺和图内缩放；
-- 重置与窗口变化边界、指针时刻线程明细；
-- 键盘左右键移动时间指针，`Shift + 方向键` 按小时移动；
-- 预测终点剩余与达到额度上限的条件结果。
-
-独立版来源基线为原仓库提交 `0d71457`。主页模块的规范化 DOM 与该提交中的原模块相同；独立版只替换了页面外壳、数据装载层和隐私处理。说明页用于公开数据口径，不影响主页。
-
-## 30 秒启动
-
-需要 Python 3.11+。默认模式只使用每次启动即时生成的合成数据，不需要 OpenAI 登录或 API key。建议使用独立虚拟环境：
-
-```powershell
-git clone https://github.com/zaidezhang728-arch/codex-quota-dashboard.git
-Set-Location .\codex-quota-dashboard
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .
-.\.venv\Scripts\codex-quota-dashboard.exe
-```
-
-打开 <http://127.0.0.1:18766/#overview>。
-
-### 连接本机实时监控台
-
-如果兼容服务运行在 `127.0.0.1:18765`：
-
-```powershell
-codex-quota-dashboard --mode live --upstream http://127.0.0.1:18765
-```
-
-实时模式会：
-
-1. 读取 `/control/latest.json`；
-2. 拒绝绝对路径、`..` 和跨来源快照指针；
-3. 限制压缩与解压体积；
-4. 校验 gzip 快照的 SHA-256；
-5. 代理只读历史范围与指针线程接口；
-6. 默认把任务标题、线程标识和主机名替换为匿名值。
-
-上游不可用或校验失败时，实时模式明确报错，不会静默混入演示数据。仅在可信的单人本机环境中确有需要时，才使用 `--show-local-titles`。
-
-## 数据边界
-
-| 层级 | 界面含义 | 不代表 |
+| 层 | 职责 | 主要输出 |
 | --- | --- | --- |
-| 服务器观测 | 当前账户窗口的已用/剩余百分比与重置时间 | 单个任务账单、模型归因 |
-| 运行构成 | 本机可恢复记录中的线程时长与并发 | 全机完整活动、额度份额 |
-| 条件预测 | 在页面所列工作假设下延伸的曲线 | 保证、概率覆盖、官方配额承诺 |
-| 条件换算接口 | 当前本机校准范围内的窗口百分点估计 | 美元、通用 credits、API 价格 |
+| M1 · 证据 | 读取操作者显式选择的 JSONL 数据源和权威额度观测，去重、冻结并保留截止时间 | 证据快照、实际额度曲线、冻结身份 |
+| M2 · 解释 | 在额度显示取整和固定时间对齐候选下求非负 token 通道参数 | 最佳解释参数、严格诊断、残差、对齐敏感范围 |
+| M3 · 走势 | 将冻结参数与近期工作负载映射到重置前的额度路径 | 参考线、参数敏感范围、条件用尽状态 |
 
-[OpenAI 的官方使用限制文档](https://learn.chatgpt.com/docs/enterprise/usage-limits)区分工作区用量控制与 API 计费。本项目不会把本机条件模型描述成 OpenAI 的通用官方口径。
+页面中的三个概念互不替代：
+
+- **Codex 剩余额度**来自服务器观测；
+- **解释预测剩余额度**等于 100% 减去 M2 对当前周期的解释扣量；
+- **未来走势**由 M3 在页面列明的工作负载假设下计算。
+
+这些输出不是官方费率、账单明细、概率保证或额度承诺。
 
 ## 架构
 
-```mermaid
+~~~mermaid
 flowchart LR
-  Browser[浏览器] -->|同源 JSON| Viewer[只读 viewer\n127.0.0.1:18766]
-  Viewer --> Demo[即时合成演示]
-  Viewer -->|live mode| Pointer[latest.json 指针]
-  Pointer -->|path + SHA-256| Snapshot[gzip 快照]
-  Viewer -->|只读代理| History[历史范围]
-  Viewer -->|默认匿名化| Runtime[指针线程明细]
-```
+  S[显式选择的数据源] --> C[M1 采集与本地证据库]
+  Q[权威额度观测] --> C
+  C --> F[冻结任务]
+  F --> M1[M1 观测视图]
+  F --> M2[M2 解释拟合]
+  B[显式启动参考\nreference_only] --> M3
+  M2 -->|有限解释优先| M3[M3 条件走势]
+  M1 --> P[原子快照]
+  M2 --> P
+  M3 --> P
+  P --> W[loopback Web 页面]
+~~~
 
-后端只使用 Python 标准库。Apache ECharts 随仓库本地打包，不从 CDN 加载脚本，也不发送遥测。
+拟合不在 HTTP 请求中同步执行。Web 服务只读取最近一次成功冻结的快照；
+采集或求解失败时，旧快照仍可读，失败不会被静默包装为新结果。
+
+## 算法口径
+
+### M1：证据与时间边界
+
+采集器只扫描配置中列出的文件或目录。它在字节层先筛选会话元数据、
+turn context 和 token usage 记录，再解析相关 JSON；提示词、响应正文和工具
+payload 不进入本地证据库。额度观测通过本机 Codex App Server 读取，并保留
+server_authoritative 来源标记。
+
+### M2：最佳近似解释
+
+M2 为每个模型拟合三个非负通道：
+
+- 未缓存输入 token；
+- 缓存输入 token；
+- 输出 token。
+
+参数单位是“每百万 token 对应的额度百分点”。系统将服务器显示精度转换为
+累计约束，并固定评估 -120、0、+120 秒三个对齐候选。求解首先检查所有约束
+能否严格同时满足；严格集合不可行时，使用最小 L1 约束残差形成最佳近似解释，
+同时保留 strict_status、总残差、最大残差和受影响约束数。
+
+不同固定对齐候选的参数最小值与最大值构成“对齐敏感范围”。它描述时间对齐
+选择带来的变化，不是置信区间或概率区间。参数为零只表示当前证据没有分离出
+该通道的有限正贡献，不表示该类 token 免费。
+
+### M3：条件额度走势
+
+M3 从近期 wall-clock token 速率生成工作负载计划，使用同一组模型与通道参数
+向重置时刻推进。存在有限本地 M2 解释时，M3 优先使用该冻结结果；否则仅在
+操作者显式启用时读取只读启动参考。每个快照记录 reference_source、
+reference_id、证据截止和算法版本。
+
+## 环境适配式部署
+
+本项目不承诺通用一键安装。操作者需要根据目标运行环境配置数据源、权限、
+状态目录、保留期和调度。要求 Python 3.11+；前端测试还需要 Node.js 22+。
+
+~~~powershell
+git clone https://github.com/zaidezhang728-arch/codex-quota-dashboard.git
+Set-Location .\codex-quota-dashboard
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install ".[test]"
+Copy-Item .\config.example.toml .\config.toml
+~~~
+
+编辑 config.toml 后先验证：
+
+~~~powershell
+.\.venv\Scripts\codex-quota-system.exe --config .\config.toml validate-config
+~~~
+
+三个能力开关彼此独立且默认关闭：
+
+~~~toml
+[bootstrap_reference]
+mode = "off"       # 改为 bundled 或 path 才会启用
+
+[monitoring]
+enabled = false     # 改为 true 后才读取 sources / App Server
+sources = []
+collect_rate_limits = false
+
+[local_fitting]
+enabled = false     # 需要 monitoring.enabled=true
+~~~
+
+启用所需能力后，可以分步运行：
+
+~~~powershell
+# 一次显式采集
+codex-quota-system --config .\config.toml collect
+
+# 从当前本地状态原子冻结 M1-M2-M3 快照
+codex-quota-system --config .\config.toml refresh
+
+# 仅展示已有快照
+codex-quota-system --config .\config.toml serve
+
+# 按配置持续采集、拟合并提供页面
+codex-quota-system --config .\config.toml run
+~~~
+
+默认页面地址为 http://127.0.0.1:18766/#overview 。非 loopback 监听需要额外
+传入 --allow-network-bind，并由部署者自行提供访问控制和传输保护。
+
+## 启动参考与本地适应
+
+随版本发布的启动参考处于 reference_only 状态，默认关闭。它提供粗化参数和
+保守边界，使无本地观测历史的冷启动环境在获得当前额度观测与近期工作负载后
+可以先形成条件走势。它不替代本地 M2 解释和时间外验证。
+
+该资产只含模型、token 通道、单位、粗化参考值、扩大后的边界、用途和许可。
+完整字段、SHA-256、派生方法和限制见
+[Bootstrap reference contract](docs/BOOTSTRAP_REFERENCE.md)。
+
+本地拟合写入 state.directory；公共参考保持只读。停止 run 或关闭配置开关会
+停止新增采集与拟合。下列命令在确认后删除精确配置的本地状态目录，使系统回到
+空历史或启动参考状态：
+
+~~~powershell
+codex-quota-system --config .\config.toml purge-local-state --yes
+~~~
 
 ## 本地接口
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/healthz` | 只证明 viewer 正在响应 |
-| `GET` | `/api/dashboard` | 已投影、默认匿名化的前端快照 |
-| `GET` | `/api/quota/history` | 历史范围只读代理或合成结果 |
-| `GET` | `/api/quota/runtime` | 指针时刻线程明细，默认匿名化 |
-| `POST` | `/api/calibration/quote` | 可选的条件预算估计与上下界 |
+| GET | /healthz | 服务、系统类型和最近冻结快照身份 |
+| GET | /api/dashboard | M1、M2、M3 与 UI 投影 |
+| GET | /api/quota/history | 当前冻结快照中的额度历史范围 |
+| GET | /api/quota/runtime | 聚合边界；不公开线程身份 |
 
-`/healthz` 不证明上游新鲜、预测有效或业务成功。
+/healthz 证明服务和冻结快照可读，不证明预测准确、数据完整或外部业务成功。
 
-## 隐私与安全默认值
+## 数据与隐私
 
-- 默认只监听 `127.0.0.1`；实时上游默认只接受 loopback。
-- 不启用 CORS，不提供目录列表，不持久化快照，不含遥测。
-- API 使用 `no-store`；页面启用 CSP、`nosniff`、同源资源策略和禁止嵌入。
-- 非 loopback 上游与网络监听分别需要显式危险开关。
-- 仓库截图、测试和 CI 只使用合成数据；真实快照、SQLite、凭据和本机验收截图不入库。
+- 状态数据库、游标、日志和冻结快照应存放在仓库外；
+- 监控不会自动发现历史目录，每个 source 都由操作者显式指定；
+- 默认只监听 loopback，不启用 CORS，不含分析遥测；
+- 公共测试只使用合成证据；
+- 运行数据的停用、保留和删除由 config.toml 与 purge-local-state 合同控制。
 
-详见 [SECURITY.md](SECURITY.md)。
+详见 [Security and privacy](SECURITY.md)。
 
-## 开发与验证
+## 验证
 
-```powershell
-$env:PYTHONPATH = (Resolve-Path .\src).Path
-python -m unittest discover -s tests -p test_*.py
-npm install
+~~~powershell
+python -m pytest -q
+npm ci
 npm test
-
-$env:PLAYWRIGHT_CHANNEL = 'chrome'
+$env:PLAYWRIGHT_CHANNEL = "chrome"
 npm run test:e2e
-```
+~~~
 
-端到端检查覆盖合成数据标识、图表渲染、范围切换、指针线程明细、说明页、320 px 无横向溢出和键盘可见焦点。
+发布验收覆盖配置默认值、启动参考校验、M2 严格/近似状态、M3 参数来源、
+增量采集、原子冻结、HTTP 安全头、键盘操作、320 px 回流和重置前七天默认
+视图。隔离安装与拟合基准见 [Validation](docs/VALIDATION.md)。
 
-最新的全新目录/虚拟环境验证记录见 [Fresh-machine validation](docs/FRESH_MACHINE_VALIDATION.md)。该记录分别判断安装、合成演示和真实拟合；演示曲线通过不等于真实预测算法通过。
+## 许可
 
-## 项目状态
-
-当前版本是 `0.1.0`。页面、合成演示和只读适配器可运行。真实拟合引擎未包含在本仓库中，因此本仓库没有“新电脑独立完成真实预测”或“真实拟合耗时达标”的验收结论；任何上游预测候选是否采用、是否准确，仍需在其来源系统独立验证。
-
-## 许可与商用
-
-本项目自有代码采用 [MIT License](LICENSE)，允许个人、研究、内部和商业用途，也允许修改、分发、再许可和销售副本。分发本软件或其实质性部分时，需要保留原版权声明和 MIT 许可声明；软件按“原样”提供，不附带担保。
-
-Apache ECharts 继续适用其 Apache License 2.0，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。`Codex`、`OpenAI` 及相关名称和标识的权利属于各自权利人；MIT 许可不授予商标使用权。本项目是社区项目，不代表 OpenAI 官方产品、承诺或背书。简明商用说明见 [LICENSING.md](LICENSING.md)，其中的摘要不替代许可证正文或专业法律意见。
+仓库自有代码、文档和启动参考采用
+[Apache License 2.0](LICENSE)，允许商业使用、修改和分发，并提供该许可规定
+的专利授权。分发时需遵守许可证的通知与修改标记条件。第三方组件见
+[Third-party notices](THIRD_PARTY_NOTICES.md)，简明说明见
+[License and commercial use](LICENSING.md)。
 
 ---
 
 ## English summary
 
-Codex Quota Dashboard is a privacy-first, loopback-first extraction of the full “Codex quota trend” module. Demo mode is synthetic. Live mode hash-verifies a compatible upstream gzip snapshot, proxies history and runtime details read-only, redacts local identities by default, and fails closed instead of falling back to demo data. This repository does not include the original data-ingestion, fitting, or `forecast_v2` engine. Project-owned code is MIT-licensed and may be used commercially subject to the license terms.
+Codex Quota System is a local-first M1-M2-M3 pipeline for explicit evidence
+collection, approximate quota-consumption explanation, and conditional quota
+projection. Monitoring, local fitting, and bootstrap use are disabled by
+default and separately enabled. The bundled bootstrap asset is reference-only;
+finite local M2 explanations take priority. Project-authored material is
+licensed under Apache-2.0 and may be used commercially subject to the license.

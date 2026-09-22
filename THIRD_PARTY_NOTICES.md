@@ -1,13 +1,24 @@
 # Third-party notices
 
-## Apache ECharts
+## Vendored component
 
-This repository vendors Apache ECharts 6.1.0 at
-`src/codex_quota_dashboard/static/vendor/echarts.min.js`.
+- **Apache ECharts 6.1.0** — Apache License 2.0. The bundled browser asset is
+  src/codex_quota_dashboard/static/vendor/echarts.min.js; its license text is
+  stored beside it as ECHARTS-LICENSE.txt. Its embedded d3.js-derived
+  subcomponents are covered by the adjacent BSD-3-Clause LICENSE-d3 file.
 
-- Project: https://echarts.apache.org/
-- License: Apache License 2.0
-- License text: `src/codex_quota_dashboard/static/vendor/ECHARTS-LICENSE.txt`
+ECharts is loaded locally and does not receive or transmit quota data.
 
-Apache ECharts is used only for local chart rendering. It does not receive or
-transmit dashboard data.
+## Runtime dependencies
+
+- **NumPy** — BSD-3-Clause for the main distribution; installed wheels may
+  carry additional 0BSD, MIT, Zlib and CC0 notices.
+- **SciPy** — BSD-3-Clause family.
+- **tzdata** (Windows environment marker) — Apache License 2.0.
+
+Installed binary distributions may include additional compatible notices; their
+package metadata and license files remain authoritative for that distribution.
+
+## Development dependency
+
+- **Playwright** — Apache License 2.0.

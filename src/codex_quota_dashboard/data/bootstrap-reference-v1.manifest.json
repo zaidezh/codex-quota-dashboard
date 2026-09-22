@@ -1,0 +1,31 @@
+{
+  "schema": "codex-quota-bootstrap-manifest-v1",
+  "asset": "bootstrap-reference-v1.json",
+  "sha256": "a4daaa8b5038b2cdd88b6cce4546baeef9816d7f42a1541da1bb8411c4195c0b",
+  "reference_id": "codex-quota-bootstrap-reference-2026-09-v1",
+  "status": "reference_only",
+  "derivation": "allowlisted fitted coefficients rounded and paired with conservatively expanded bounds",
+  "included_classes": [
+    "model identifiers",
+    "token channel identifiers",
+    "coarsened reference coefficients",
+    "conservative lower and upper bounds",
+    "unit, use contract, limitations and license"
+  ],
+  "excluded_classes": [
+    "account, host, thread, session and response identifiers",
+    "raw observations and time series",
+    "absolute timestamps and sample counts",
+    "paths, prompts, payloads and credentials",
+    "design matrices, caches and evaluation windows"
+  ],
+  "checks": {
+    "field_allowlist": "passed",
+    "identifier_scan": "passed",
+    "path_scan": "passed",
+    "timestamp_scan": "passed",
+    "deterministic_loader": "passed",
+    "isolated_environment": "passed"
+  },
+  "license": "Apache-2.0"
+}

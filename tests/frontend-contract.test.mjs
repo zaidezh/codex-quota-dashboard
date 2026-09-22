@@ -14,6 +14,8 @@ const [html, script, styles] = await Promise.all([
 test("homepage carries the complete quota-trend interaction surface", () => {
   for (const id of [
     "remainingQuota",
+    "explainedRemainingQuota",
+    "explainedRemainingNote",
     "resetCountdown",
     "quotaChart",
     "rangePreset",
@@ -25,6 +27,7 @@ test("homepage carries the complete quota-trend interaction surface", () => {
     "runtimeDetailRows",
     "scenarioRemaining",
     "scenarioHitting",
+    "m2ParameterRows",
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
   }
@@ -37,6 +40,16 @@ test("homepage carries the complete quota-trend interaction surface", () => {
 test("standalone frontend does not retain unrelated monitor views", () => {
   assert.doesNotMatch(html, /VPS 状态|本机状态/);
   assert.doesNotMatch(script, /function renderVps|function renderHostCharts|function renderUsage/);
+  assert.doesNotMatch(html, /全新电脑|独立 viewer|合成演示/);
+  assert.doesNotMatch(script, /合成演示|DemoSource|LiveSource/);
+  assert.match(html, /M1–M3 数据口径/);
+  assert.match(script, /local_m2_explanation/);
+});
+
+test("overview formula is bound to the current M2 explanation", () => {
+  assert.match(script, /current_cycle\?\.current/);
+  assert.match(script, /100-explainedUsed/);
+  assert.match(html, /解释预测剩余额度/);
 });
 
 test("ids are unique and accessibility fallbacks remain present", () => {

@@ -1,32 +1,20 @@
 # License and commercial use
 
-This page is a plain-language guide. The license files control if this summary
-and the license text ever differ.
+Repository-authored code, documentation, and the bundled bootstrap reference are
+licensed under the [Apache License 2.0](LICENSE). The license permits use,
+modification, distribution, and commercial use, subject to its conditions. It
+also includes an express patent grant from contributors for their contributions.
 
-## Project code
+When distributing this work or a modified version, retain the license and
+applicable notices, mark modified files as required by the license, and do not
+use contributor names or project marks to imply endorsement.
 
-Code authored for this repository is released under the [MIT License](LICENSE).
-Subject to that license, you may use it for personal, research, internal, or
-commercial purposes. You may also copy, modify, merge, publish, distribute,
-sublicense, and sell copies.
+Third-party software remains under its own license. The vendored chart library
+and runtime/development dependencies are summarized in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-When you distribute the software or a substantial portion of it, keep the
-copyright notice and MIT permission notice. The software is provided “as is,”
-without warranty.
+Codex, OpenAI, and related names and marks belong to their respective owners.
+This community project is not affiliated with or endorsed by OpenAI, and the
+Apache License does not grant trademark rights.
 
-## Third-party software
-
-The bundled Apache ECharts file remains under Apache License 2.0. Its project,
-version, location, and bundled license text are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The MIT license for this
-project does not replace a third party's license.
-
-## Names and affiliation
-
-This community project is not affiliated with or endorsed by OpenAI. `Codex`,
-`OpenAI`, and related names and marks belong to their respective owners. No
-trademark rights are granted by the MIT license.
-
-This guide is not legal advice. If a deployment has regulatory, contractual,
-patent, trademark, or high-liability requirements, obtain appropriate legal
-review for that use.
+This summary is not legal advice; the license text controls.

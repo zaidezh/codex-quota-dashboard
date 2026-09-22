@@ -3,21 +3,29 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codex-quota-dashboard"
-version = "0.1.0"
-description = "Privacy-first local dashboard for Codex quota observations and conditional forecasts"
+name = "codex-quota-system"
+version = "0.2.0"
+description = "Local M1-M2-M3 evidence, explanation fitting and conditional quota forecasting"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [{ name = "DDBusi" }]
-keywords = ["codex", "quota", "dashboard", "forecasting", "privacy", "monitoring"]
+license = "Apache-2.0"
+authors = [{ name = "Codex Quota System contributors" }]
+keywords = ["codex", "quota", "forecasting", "fitting", "privacy", "monitoring"]
+dependencies = [
+  "numpy>=1.26,<3",
+  "scipy>=1.14,<2",
+  "tzdata>=2025.2; platform_system == 'Windows'",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=8.4,<9"]
 
 [project.urls]
 Homepage = "https://github.com/zaidezhang728-arch/codex-quota-dashboard"
@@ -26,7 +34,7 @@ Repository = "https://github.com/zaidezhang728-arch/codex-quota-dashboard.git"
 Issues = "https://github.com/zaidezhang728-arch/codex-quota-dashboard/issues"
 
 [project.scripts]
-codex-quota-dashboard = "codex_quota_dashboard.server:main"
+codex-quota-system = "codex_quota_dashboard.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -35,4 +43,4 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-codex_quota_dashboard = ["static/*", "static/vendor/*"]
+codex_quota_dashboard = ["data/*.json", "static/*", "static/vendor/*"]

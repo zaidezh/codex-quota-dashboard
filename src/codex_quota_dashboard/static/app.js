@@ -451,7 +451,7 @@
   }
   function renderTaskForecast(a) {
     const f = state.data.task_forecast || {}, tasks = f.tasks || [], history = f.minute_history || [];
-    text("forecastState", ({tracking:"逐任务预测", idle:"任务已结束", coverage_uncertain:"覆盖仍有不确定性", stale:"观测已过期"})[f.status] || "样本不足");
+    text("forecastState", ({conditional:"M3 条件走势",tracking:"M3 条件走势",idle:"近期工作负载为空",coverage_uncertain:"覆盖仍有不确定性",stale:"观测已过期",insufficient_evidence:"证据不足",unavailable:"暂不可用"})[f.status] || "样本不足");
     text("forecastSample", `${n(tasks.filter(t=>t.status === "observed_open").length)} 个近期活动任务 · 每分钟推算`);
     const final = f.points?.at(-1), hit = f.points?.find(p=>p.median >= 100)?.time;
     text("forecastSummary", final ? `假设用户不再干预，${hit ? "主曲线预计在 " + date(hit) + " 达到额度上限" : "本次重置前预计剩余约 " + n(100-final.median,1) + "%"}。${tasks.length ? "随任务结束、等待和子任务变化重新计算。" : "当前轮次之间仍会计入有依据的目标续跑和定时任务。"}` : "观测不足或过期，暂不绘制预测。实际额度继续显示。");
@@ -472,13 +472,34 @@
     const a = state.data.adaptive, latest = a.latest || {};
     text("remainingQuota", valid(latest.remaining_percent) ? `${n(latest.remaining_percent)}%` : "—");
     text("quotaUsed", valid(latest.used_percent) ? `本窗口已用 ${n(latest.used_percent)}% · 服务器观测` : "等待服务器观测");
+    const m2Current=state.data.forecast_v2?.m2?.current_cycle?.current||{},explainedUsed=Number(m2Current.explained_used_pp);
+    if(valid(explainedUsed)) {
+      const explainedRemaining=Math.max(0,Math.min(100,100-explainedUsed));
+      const usedLow=Number(m2Current.explained_lower_pp??m2Current.compatible_lower_pp),usedHigh=Number(m2Current.explained_upper_pp??m2Current.compatible_upper_pp);
+      text("explainedRemainingQuota",`${n(explainedRemaining,2)}%`);
+      text("explainedRemainingNote",valid(usedLow)&&valid(usedHigh)?`按解释当前扣量 ${n(explainedUsed,2)}%；对齐剩余 ${n(Math.max(0,100-usedHigh),2)}–${n(Math.min(100,100-usedLow),2)}%`:`按解释当前扣量 ${n(explainedUsed,2)}%`);
+    } else {
+      text("explainedRemainingQuota","—");
+      text("explainedRemainingNote","等待 M2 当前解释");
+    }
     countdown(); text("resetAt", date(latest.resets_at));
     renderTaskForecast(a);
     renderQuota(a);
   }
   function renderDetails() {
-    const f=state.data.task_forecast||{},mode=state.sourceMode==='live'?'本机实时':'合成演示',privacy=state.privacy==='local_titles_visible'?'显式显示本机标题':'标题、线程与主机已匿名化';
-    text('detailMode',mode);text('privacyMode',privacy);text('detailsSource',mode);text('detailsGenerated',date(state.data.generated_at,false,true));text('detailsIssued',date(f.issued_at||f.as_of,false,true));text('detailsPrivacy',privacy);
+    const f=state.data.task_forecast||{},runtime=state.data.runtime||{},m2=state.data.forecast_v2?.m2||{},m3=state.data.forecast_v2?.m3||{};
+    const states={locally_validated:'本地解释已采用',reference_only:'启动参考',collecting:'正在积累证据',empty_history:'空历史'};
+    const sources={local_m2_explanation:'本地 M2 解释',local_m2_fit:'本地 M2 解释',bootstrap_reference:'显式启动参考'};
+    text('detailMode',states[state.data.system_state]||state.data.system_state||'等待状态');
+    text('privacyMode',`监控${runtime.monitoring_enabled?'已开启':'未开启'} · 拟合${runtime.local_fitting_enabled?'已开启':'未开启'}`);
+    text('detailsSource',sources[m3.reference_source]||'尚无可用参数');
+    text('detailsGenerated',date(state.data.generated_at,false,true));text('detailsIssued',date(f.issued_at||f.as_of,false,true));
+    text('detailsPrivacy',`监控${runtime.monitoring_enabled?'开启':'关闭'} · 本地拟合${runtime.local_fitting_enabled?'开启':'关闭'} · 参考 ${runtime.bootstrap_mode||'off'}`);
+    const statusNames={approximate:'按假设解释',feasible:'严格相容',disabled:'显式关闭',insufficient_evidence:'证据不足',timeout:'求解超时',numeric_failure:'数值失败',unavailable:'暂不可用'};
+    const fit=m2.fit_error||{};
+    text('m2ParameterSummary',`${statusNames[m2.status]||m2.status||'等待结果'}${valid(fit.max_constraint_slack_pp)?` · 最大残差 ${n(fit.max_constraint_slack_pp,3)} 个百分点`:''}；范围为时间对齐敏感性。`);
+    const formatChannel=item=>item&&valid(item.reference)?`${n(item.reference,3)}（${n(item.lower,3)}–${valid(item.upper)?n(item.upper,3):'未限定'}）`:'—';
+    $('m2ParameterRows').innerHTML=(m2.model_parameters||[]).map(row=>`<tr><td>${esc(row.model)}</td><td>${formatChannel(row.channels?.uncached_input)}</td><td>${formatChannel(row.channels?.cached_input)}</td><td>${formatChannel(row.channels?.output)}</td></tr>`).join('')||'<tr><td colspan="4">暂无有限参数</td></tr>';
   }
   function render() {
     if (!state.data) return;
@@ -511,7 +532,7 @@
       const age = (Date.now() - Date.parse(state.data.generated_at)) / 1000, stale = age > 180;
       $("freshness").className = `status-label ${state.offline || stale ? "warn" : "good"}`;
       text("freshness", state.offline ? "离线数据" : stale ? "数据已过期" : "数据已更新");
-      text('modeBadge',state.sourceMode==='live'?'本机实时':'合成演示');$('modeBadge').className=`mode-badge ${state.sourceMode==='live'?'live':'demo'}`;text('sourceMode',state.sourceMode==='live'?'只读本机上游':'不含账户数据');render();
+      text('modeBadge','M1–M3 本地系统');$('modeBadge').className='mode-badge live';text('sourceMode','页面只读冻结快照');render();
     } catch (error) { $("freshness").className = "status-label bad"; text("freshness", "读取失败"); text("error", `${error.name === "AbortError" ? "读取超时，将在下一分钟重试。" : error.message}`); $("error").classList.remove("hidden"); }
     finally { state.busy = false; $("refresh").disabled = false; }
   }

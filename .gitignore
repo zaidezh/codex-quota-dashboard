@@ -9,10 +9,14 @@ playwright-report/
 test-results/
 .env
 .env.*
+config.toml
 *.log
 *.tmp
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
 data/
+!src/codex_quota_dashboard/data/
+!src/codex_quota_dashboard/data/bootstrap-reference-v1.json
+!src/codex_quota_dashboard/data/bootstrap-reference-v1.manifest.json
 screenshots/private/

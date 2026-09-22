@@ -1,0 +1,38 @@
+timezone = "UTC"
+
+[state]
+# Required before collection or snapshot refresh. Keep this outside the repository.
+directory = "../codex-quota-state"
+retention_days = 35
+
+[bootstrap_reference]
+# off | bundled | path. Change this value explicitly to enable a startup reference.
+mode = "off"
+# path = "./references/custom-bootstrap.json"
+
+[monitoring]
+# No source is read until this switch is changed to true.
+enabled = false
+# Every file or directory must be selected by the operator; there is no auto-discovery.
+sources = []
+# Reads the current account quota through the locally installed Codex App Server.
+collect_rate_limits = false
+collector_id = "local-machine"
+codex_command = "codex"
+# codex_home = "./codex-state"
+poll_seconds = 60
+
+[local_fitting]
+# Requires monitoring.enabled=true. Local results stay under state.directory.
+enabled = false
+history_days = 7
+solver_timeout_seconds = 15.0
+workload_lookback_minutes = 120
+path_count = 1
+seed = 906
+bucket_seconds = 900
+refresh_seconds = 300
+
+[web]
+host = "127.0.0.1"
+port = 18766

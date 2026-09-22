@@ -1,0 +1,30 @@
+{
+  "schema": "quota-forecast-v2-bootstrap-reference-v1",
+  "reference_id": "codex-quota-bootstrap-reference-2026-09-v1",
+  "status": "reference_only",
+  "unit": "percentage_points_per_million_tokens",
+  "source_category": "coarsened_deidentified_historical_fit_aggregate",
+  "generation_method": "field_whitelist_rounding_and_conservative_bound_expansion",
+  "training_scope": "mixed_model_token_channels_without_raw_observations",
+  "intended_use": "explicit_initial_reference_until_local_m2_produces_a_finite_explanation",
+  "privacy": "contains_no_account_identifiers_counts_paths_timestamps_or_raw_series",
+  "limitations": "initialization_prior_not_an_official_tariff_probability_interval_or_accuracy_guarantee",
+  "license": "Apache-2.0",
+  "models": {
+    "gpt-5.6-luna": {
+      "uncached_input": {"reference": 0.0, "lower": 0.0, "upper": 0.25},
+      "cached_input": {"reference": 0.003, "lower": 0.0, "upper": 0.01},
+      "output": {"reference": 0.0, "lower": 0.0, "upper": 1.1}
+    },
+    "gpt-5.6-sol": {
+      "uncached_input": {"reference": 0.0, "lower": 0.0, "upper": 1.8},
+      "cached_input": {"reference": 0.02, "lower": 0.0, "upper": 0.06},
+      "output": {"reference": 3.0, "lower": 0.0, "upper": 15.0}
+    },
+    "gpt-6-astra": {
+      "uncached_input": {"reference": 0.55, "lower": 0.0, "upper": 1.7},
+      "cached_input": {"reference": 0.075, "lower": 0.05, "upper": 0.1},
+      "output": {"reference": 4.0, "lower": 0.0, "upper": 14.0}
+    }
+  }
+}
