@@ -1,8 +1,15 @@
 # Codex Quota Dashboard
 
+[![CI](https://github.com/zaidezhang728-arch/codex-quota-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/zaidezhang728-arch/codex-quota-dashboard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776ab.svg)](pyproject.toml)
+
 把现有监控台的“Codex 额度走势”完整拆成一个可独立运行、可公开审阅的本机前端。主页保留原模块的 DOM、视觉语言和交互；后台只读连接兼容数据源，并在浏览器收到数据前完成完整性校验与隐私投影。
 
 > Community project. Not affiliated with or endorsed by OpenAI.
+
+> [!IMPORTANT]
+> 本仓库是额度走势的独立 viewer，不包含原监控系统的采集、历史拟合或 `forecast_v2` 预测引擎。默认模式即时生成明确标记的合成演示数据；实时模式只读显示兼容上游已经计算出的预测。全新电脑可以独立运行演示，但仅安装本仓库不能生成真实账户预测。
 
 ![Codex Quota Dashboard synthetic demo](docs/dashboard-demo.png)
 
@@ -19,13 +26,14 @@
 
 ## 30 秒启动
 
-需要 Python 3.11+。默认模式只使用每次启动即时生成的合成数据，不需要 OpenAI 登录或 API key。
+需要 Python 3.11+。默认模式只使用每次启动即时生成的合成数据，不需要 OpenAI 登录或 API key。建议使用独立虚拟环境：
 
 ```powershell
 git clone https://github.com/zaidezhang728-arch/codex-quota-dashboard.git
 Set-Location .\codex-quota-dashboard
-python -m pip install -e .
-codex-quota-dashboard
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .
+.\.venv\Scripts\codex-quota-dashboard.exe
 ```
 
 打开 <http://127.0.0.1:18766/#overview>。
@@ -110,16 +118,20 @@ npm run test:e2e
 
 端到端检查覆盖合成数据标识、图表渲染、范围切换、指针线程明细、说明页、320 px 无横向溢出和键盘可见焦点。
 
+最新的全新目录/虚拟环境验证记录见 [Fresh-machine validation](docs/FRESH_MACHINE_VALIDATION.md)。该记录分别判断安装、合成演示和真实拟合；演示曲线通过不等于真实预测算法通过。
+
 ## 项目状态
 
-当前版本是 `0.1.0`。页面与只读适配器可运行；这不表示任何预测候选已被生产采用，也不表示预测精度通过独立业务验收。
+当前版本是 `0.1.0`。页面、合成演示和只读适配器可运行。真实拟合引擎未包含在本仓库中，因此本仓库没有“新电脑独立完成真实预测”或“真实拟合耗时达标”的验收结论；任何上游预测候选是否采用、是否准确，仍需在其来源系统独立验证。
 
-## License
+## 许可与商用
 
-项目代码采用 [MIT License](LICENSE)。Apache ECharts 的许可信息见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本项目自有代码采用 [MIT License](LICENSE)，允许个人、研究、内部和商业用途，也允许修改、分发、再许可和销售副本。分发本软件或其实质性部分时，需要保留原版权声明和 MIT 许可声明；软件按“原样”提供，不附带担保。
+
+Apache ECharts 继续适用其 Apache License 2.0，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。`Codex`、`OpenAI` 及相关名称和标识的权利属于各自权利人；MIT 许可不授予商标使用权。本项目是社区项目，不代表 OpenAI 官方产品、承诺或背书。简明商用说明见 [LICENSING.md](LICENSING.md)，其中的摘要不替代许可证正文或专业法律意见。
 
 ---
 
 ## English summary
 
-Codex Quota Dashboard is a privacy-first, loopback-first extraction of the full “Codex quota trend” module. Demo mode is synthetic. Live mode hash-verifies a compatible upstream gzip snapshot, proxies history and runtime details read-only, redacts local identities by default, and fails closed instead of falling back to demo data.
+Codex Quota Dashboard is a privacy-first, loopback-first extraction of the full “Codex quota trend” module. Demo mode is synthetic. Live mode hash-verifies a compatible upstream gzip snapshot, proxies history and runtime details read-only, redacts local identities by default, and fails closed instead of falling back to demo data. This repository does not include the original data-ingestion, fitting, or `forecast_v2` engine. Project-owned code is MIT-licensed and may be used commercially subject to the license terms.

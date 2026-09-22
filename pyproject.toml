@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "DDBusi" }]
+keywords = ["codex", "quota", "dashboard", "forecasting", "privacy", "monitoring"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
@@ -17,6 +18,12 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
+
+[project.urls]
+Homepage = "https://github.com/zaidezhang728-arch/codex-quota-dashboard"
+Documentation = "https://github.com/zaidezhang728-arch/codex-quota-dashboard#readme"
+Repository = "https://github.com/zaidezhang728-arch/codex-quota-dashboard.git"
+Issues = "https://github.com/zaidezhang728-arch/codex-quota-dashboard/issues"
 
 [project.scripts]
 codex-quota-dashboard = "codex_quota_dashboard.server:main"
