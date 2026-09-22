@@ -11,6 +11,7 @@ import threading
 import time
 from typing import Any
 
+from . import __version__
 from .models import RateLimitSnapshot, parse_timestamp, utc_now
 
 
@@ -61,7 +62,7 @@ class AppServerClient:
                 "clientInfo": {
                     "name": "codex_quota_system",
                     "title": "Codex Quota System",
-                    "version": "0.3.0",
+                    "version": __version__,
                 },
                 "capabilities": {
                     "optOutNotificationMethods": [

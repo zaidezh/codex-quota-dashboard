@@ -23,7 +23,12 @@ from codex_quota_dashboard.config import (
     load_config,
 )
 from codex_quota_dashboard.forecast_v2.live_m3 import _bootstrap
-from codex_quota_dashboard.integration import copy_static_assets, static_asset_manifest
+from codex_quota_dashboard.integration import (
+    STATIC_ASSETS,
+    copy_static_assets,
+    static_asset_manifest,
+    static_asset_root,
+)
 from codex_quota_dashboard.models import RateLimitSnapshot, iso_utc
 from codex_quota_dashboard.server import create_server
 from codex_quota_dashboard.store import add_rate_limits, connect
@@ -86,6 +91,20 @@ def test_public_integration_copies_identical_static_assets(tmp_path: Path) -> No
     assert copied == expected
     for relative, digest in expected["files"].items():
         assert sha256((tmp_path / "static" / relative).read_bytes()).hexdigest() == digest
+
+
+def test_distributed_resources_have_portable_lf_bytes() -> None:
+    root = static_asset_root()
+    resources = [root.joinpath(relative) for relative in STATIC_ASSETS]
+    resources.extend(
+        files("codex_quota_dashboard").joinpath("data", name)
+        for name in (
+            "bootstrap-reference-v1.json",
+            "bootstrap-reference-v1.manifest.json",
+        )
+    )
+    for resource in resources:
+        assert b"\r\n" not in resource.read_bytes(), str(resource)
 
 
 def test_explicit_jsonl_collection_is_incremental(tmp_path: Path) -> None:

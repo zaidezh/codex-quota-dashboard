@@ -1,6 +1,6 @@
 # Codex Quota System
 
-[![CI](https://github.com/zaidezhang728-arch/codex-quota-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/zaidezhang728-arch/codex-quota-dashboard/actions/workflows/ci.yml)
+[![CI](https://github.com/zaidezh/codex-quota-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/zaidezh/codex-quota-dashboard/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-2ea44f.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776ab.svg)](pyproject.toml)
 
@@ -103,7 +103,7 @@ reference_id、证据截止和算法版本。
 状态目录、保留期和调度。要求 Python 3.11+；前端测试还需要 Node.js 22+。
 
 ~~~powershell
-git clone https://github.com/zaidezhang728-arch/codex-quota-dashboard.git
+git clone https://github.com/zaidezh/codex-quota-dashboard.git
 Set-Location .\codex-quota-dashboard
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install ".[test]"

@@ -1,0 +1,4 @@
+# Distributed reference data and Web assets have byte-stable LF endings on
+# every platform so package, Git object and embedded-host hashes are identical.
+src/codex_quota_dashboard/data/** text eol=lf
+src/codex_quota_dashboard/static/** text eol=lf

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-quota-system"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local M1-M2-M3 evidence, explanation fitting and conditional quota forecasting"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,10 +28,10 @@ classifiers = [
 test = ["pytest>=8.4,<9"]
 
 [project.urls]
-Homepage = "https://github.com/zaidezhang728-arch/codex-quota-dashboard"
-Documentation = "https://github.com/zaidezhang728-arch/codex-quota-dashboard#readme"
-Repository = "https://github.com/zaidezhang728-arch/codex-quota-dashboard.git"
-Issues = "https://github.com/zaidezhang728-arch/codex-quota-dashboard/issues"
+Homepage = "https://github.com/zaidezh/codex-quota-dashboard"
+Documentation = "https://github.com/zaidezh/codex-quota-dashboard#readme"
+Repository = "https://github.com/zaidezh/codex-quota-dashboard.git"
+Issues = "https://github.com/zaidezh/codex-quota-dashboard/issues"
 
 [project.scripts]
 codex-quota-system = "codex_quota_dashboard.cli:main"

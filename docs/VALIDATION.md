@@ -1,8 +1,9 @@
 # Release validation
 
-This page records the reproducible release checks for version `0.3.0`. The
-figures below describe one fixed validation environment; they are not a
-cross-machine performance guarantee and do not measure prediction accuracy.
+This page records the reproducible functional and benchmark checks for version
+`0.3.0`, plus the packaging-integrity gate added in `0.3.1`. The figures below
+describe one fixed validation environment; they are not a cross-machine
+performance guarantee and do not measure prediction accuracy.
 
 ## Environment
 
@@ -50,6 +51,29 @@ and third-party license texts; their installed-resource hashes were verified.
 | Failed refresh | previously frozen snapshot remained byte-for-byte unchanged |
 | Complete Codex UI | overview and details use the same M1-M2-M3 snapshot; M2 comparison is 705 px high |
 | Responsive UI | keyboard focus present; no page overflow at 320 px |
+
+## Patch-release asset identity gate
+
+Version `0.3.1` corrects a packaging-integrity issue discovered after the
+`0.3.0` release: Git's platform line-ending conversion could change the byte
+hashes of otherwise equivalent Web assets on Windows. Repository attributes
+now pin distributed data and Web assets to LF. Pre-tag verification compared
+the following four representations by byte:
+
+1. the tagged Git objects;
+2. the built wheel;
+3. a clean installed package; and
+4. the files copied into an embedding host.
+
+All six Web assets matched, with manifest identity
+`44fcbd26d6beee28f65467de1ec1817628d882b4f57bb952507f8bc9e5dc484d`.
+Both startup-reference files also matched; the reference payload retained its
+published SHA-256
+`6abe8569c441c12335f115057cfc0b8286e06a0e18174e52c32517af051aa0bd`.
+The clean wheel installation passed `pip check`, 24 Python tests in `43.50 s`,
+four frontend contract tests and installed-package Chrome E2E. This gate
+changes neither the M1-M2-M3 contracts nor the rendered interface; it makes
+the existing shared-asset identity portable and auditable.
 
 The startup-reference scenario includes a current authoritative quota
 observation and recent workload because those are necessary inputs for any M3
