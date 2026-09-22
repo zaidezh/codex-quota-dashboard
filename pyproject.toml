@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-quota-system"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local M1-M2-M3 evidence, explanation fitting and conditional quota forecasting"
 readme = "README.md"
 requires-python = ">=3.11"

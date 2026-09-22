@@ -1,6 +1,6 @@
 # Release validation
 
-This page records the reproducible release checks for version `0.2.0`. The
+This page records the reproducible release checks for version `0.2.1`. The
 figures below describe one fixed validation environment; they are not a
 cross-machine performance guarantee and do not measure prediction accuracy.
 
@@ -25,13 +25,15 @@ download-speed promise.
 
 | Gate | Result |
 | --- | --- |
-| Python contracts and algorithms | 16 passed |
+| Python contracts and algorithms | 18 passed |
 | Frontend contracts | 4 passed |
 | Installed-package Chrome E2E | passed |
 | Default configuration | monitoring, local fitting and bootstrap all off |
 | Empty history | explicit `empty_history`; no fabricated forecast |
 | Startup reference | `reference_only`; deterministic hash and loader passed |
 | Explicit collection | selected JSONL source only; duplicate import was idempotent |
+| Authoritative quota persistence | timezone-aware reset timestamp normalized; duplicate snapshot was idempotent |
+| Cold-start promotion gate | one quota point remained `insufficient_evidence`; explicit bootstrap drove M3 |
 | First local fit | M2 finite result; M3 preferred `local_m2_explanation` |
 | Incremental fit | new request and quota observation incorporated |
 | Restart | frozen state and local fitting recovered from the configured state directory |
@@ -56,11 +58,11 @@ peak working set below `512 MiB`.
 
 | Measurement | Result |
 | --- | --- |
-| First final-package run | 42.1952 s |
-| Five-run times | 42.1952, 42.5204, 42.2630, 42.4284, 42.4015 s |
-| p50 | 42.4015 s |
-| p95, inclusive | 42.5020 s |
-| Maximum peak working set | 218.77 MiB |
+| First final-package run | 42.2655 s |
+| Five-run times | 42.2655, 42.3131, 41.7025, 41.7607, 41.9172 s |
+| p50 | 41.9172 s |
+| p95, inclusive | 42.3036 s |
+| Maximum peak working set | 217.16 MiB |
 | M2 result | 5/5 `feasible`, strict status `feasible` |
 | M3 result | 5/5 `conditional`, source `local_m2_explanation` |
 

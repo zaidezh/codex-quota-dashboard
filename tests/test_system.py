@@ -23,9 +23,9 @@ from codex_quota_dashboard.config import (
     load_config,
 )
 from codex_quota_dashboard.forecast_v2.live_m3 import _bootstrap
-from codex_quota_dashboard.models import iso_utc
+from codex_quota_dashboard.models import RateLimitSnapshot, iso_utc
 from codex_quota_dashboard.server import create_server
-from codex_quota_dashboard.store import connect
+from codex_quota_dashboard.store import add_rate_limits, connect
 from codex_quota_dashboard import system as system_module
 from codex_quota_dashboard.system import bootstrap_path, freeze_snapshot
 
@@ -95,6 +95,74 @@ def test_explicit_jsonl_collection_is_incremental(tmp_path: Path) -> None:
     assert second["inserted"] == 0
     with closing(connect(config.database_path, create=False)) as db:
         assert db.execute("SELECT COUNT(*) FROM native_requests").fetchone()[0] == 1
+
+
+def test_rate_limit_write_normalizes_reset_datetime_and_is_idempotent(tmp_path: Path) -> None:
+    observed_at = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+    resets_at = observed_at + timedelta(days=7)
+    snapshot = RateLimitSnapshot(
+        observed_at=observed_at,
+        collector_id="test-collector",
+        limit_id="codex:primary",
+        limit_name="primary",
+        used_percent=34.0,
+        window_minutes=10080,
+        resets_at=resets_at,
+        plan_type="pro",
+        reached_type=None,
+        source="appserver_account_rate_limits",
+    )
+    with closing(connect(tmp_path / "state" / "evidence.sqlite")) as db:
+        assert add_rate_limits(db, [snapshot]) == 1
+        assert add_rate_limits(db, [snapshot]) == 0
+        row = db.execute(
+            "SELECT snapshot_id,resets_at FROM rate_limit_snapshots"
+        ).fetchone()
+        assert row["snapshot_id"] == snapshot.snapshot_id
+        assert row["resets_at"] == iso_utc(resets_at)
+
+
+def test_single_quota_observation_stays_on_explicit_bootstrap_reference(tmp_path: Path) -> None:
+    now = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+    config = SystemConfig(
+        timezone="UTC",
+        state=StateConfig(directory=tmp_path / "state", retention_days=35),
+        bootstrap_reference=BootstrapReferenceConfig(mode="bundled"),
+        monitoring=MonitoringConfig(enabled=True, sources=[]),
+        local_fitting=LocalFittingConfig(enabled=True, history_days=7, solver_timeout_seconds=2),
+    )
+    quota = RateLimitSnapshot(
+        observed_at=now,
+        collector_id="test-collector",
+        limit_id="codex:primary",
+        limit_name="primary",
+        used_percent=34.0,
+        window_minutes=10080,
+        resets_at=now + timedelta(days=7),
+        plan_type="pro",
+        reached_type=None,
+        source="appserver_account_rate_limits",
+    )
+    with closing(connect(config.database_path)) as db:
+        assert add_rate_limits(db, [quota]) == 1
+        db.execute(
+            """INSERT INTO native_requests
+            (response_id,session_id,turn_id,occurred_at,coverage_start,model,service_tier,
+             reasoning_effort,input_tokens,cached_input_tokens,cache_write_input_tokens,
+             output_tokens,reasoning_output_tokens,total_tokens,conflict)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+            (
+                "response-cold-start", "session-cold-start", "turn-cold-start",
+                iso_utc(now - timedelta(minutes=1)), iso_utc(now - timedelta(minutes=1)),
+                "gpt-5.6-sol", "standard", "high", 1_000_000, 0, 0, 0, 0, 1_000_000,
+            ),
+        )
+        db.commit()
+    snapshot = freeze_snapshot(config, now)
+    assert snapshot["forecast_v2"]["m2"]["status"] == "insufficient_evidence"
+    assert snapshot["forecast_v2"]["m2"]["reason"] == "same_period_displayed_quota_change_missing"
+    assert snapshot["forecast_v2"]["m3"]["reference_source"] == "bootstrap_reference"
+    assert snapshot["system_state"] == "reference_only"
 
 
 def test_full_snapshot_prefers_finite_local_m2(tmp_path: Path) -> None:

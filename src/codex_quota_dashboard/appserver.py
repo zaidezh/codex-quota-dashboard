@@ -61,7 +61,7 @@ class AppServerClient:
                 "clientInfo": {
                     "name": "codex_quota_system",
                     "title": "Codex Quota System",
-                    "version": "0.2.0",
+                    "version": "0.2.1",
                 },
                 "capabilities": {
                     "optOutNotificationMethods": [

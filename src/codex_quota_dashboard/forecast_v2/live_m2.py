@@ -68,6 +68,36 @@ def _load_observations(db: sqlite3.Connection, start: datetime, cutoff: datetime
     )
 
 
+def _has_informative_quota_change(observations: Sequence[Mapping[str, Any]]) -> bool:
+    """Return whether one reset period contains an observed display change.
+
+    A single authoritative point, or an unchanged display plateau, permits a
+    degenerate all-zero parameter vector but does not identify local debit
+    parameters. Such evidence must remain in cold-start state so M3 can use an
+    explicitly enabled bootstrap reference instead of promoting a false local
+    fit.
+    """
+    for index, left in enumerate(observations):
+        left_used = left.get("used_percent")
+        left_reset = parse_timestamp(left.get("resets_at"))
+        if left_used is None:
+            continue
+        for right in observations[index + 1:]:
+            right_used = right.get("used_percent")
+            right_reset = parse_timestamp(right.get("resets_at"))
+            if right_used is None or math.isclose(float(left_used), float(right_used), abs_tol=1e-12):
+                continue
+            same_period = (
+                left_reset is None and right_reset is None
+                or left_reset is not None
+                and right_reset is not None
+                and abs((left_reset - right_reset).total_seconds()) <= 120
+            )
+            if same_period:
+                return True
+    return False
+
+
 def _solver_design(design: Mapping[str, Any]) -> dict[str, Any]:
     keys = (
         "algorithm_id", "input_sha256", "alignment_offset_seconds", "models",
@@ -400,6 +430,22 @@ def build_live_m2(
                 "request_count": len(requests),
                 "raw_observation_count": len(raw_observations),
                 "compressed_observation_count": len(compressed["observations"]),
+            },
+        }
+    if not _has_informative_quota_change(compressed["observations"]):
+        return {
+            "schema_version": 1,
+            "version": VERSION,
+            "status": "insufficient_evidence",
+            "strict_status": "insufficient_evidence",
+            "reason": "same_period_displayed_quota_change_missing",
+            "algorithm_id": ALGORITHM_ID,
+            "models": models,
+            "evidence": {
+                "request_count": len(requests),
+                "raw_observation_count": compressed["raw_count"],
+                "compressed_observation_count": compressed["compressed_count"],
+                "period_count": compressed["period_count"],
             },
         }
     snapshot = build_snapshot(requests, compressed["observations"], now, mode="reconstructed")

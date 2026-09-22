@@ -13,6 +13,7 @@ import json
 import mimetypes
 import sys
 
+from . import __version__
 from .models import parse_timestamp
 from .system import load_snapshot
 
@@ -37,7 +38,7 @@ class QuotaHTTPServer(ThreadingHTTPServer):
 
 
 class QuotaHandler(BaseHTTPRequestHandler):
-    server_version = "CodexQuotaSystem/0.2"
+    server_version = f"CodexQuotaSystem/{__version__}"
 
     def __init__(self, *args: Any, snapshot_path: Path, **kwargs: Any) -> None:
         self.snapshot_path = snapshot_path

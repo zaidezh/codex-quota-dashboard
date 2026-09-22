@@ -8,7 +8,7 @@ import json
 import sqlite3
 from typing import Any, Iterable
 
-from .models import RateLimitSnapshot, iso_utc, stable_id
+from .models import RateLimitSnapshot, iso_utc
 
 
 SCHEMA = """
@@ -53,17 +53,13 @@ def add_rate_limits(db: sqlite3.Connection, snapshots: Iterable[RateLimitSnapsho
     inserted = 0
     with db:
         for item in snapshots:
-            snapshot_id = stable_id(
-                "rate-limit",
-                [item.collector_id, item.limit_id, iso_utc(item.observed_at), item.used_percent, item.resets_at],
-            )
             cursor = db.execute(
                 """INSERT OR IGNORE INTO rate_limit_snapshots
                 (snapshot_id,observed_at,collector_id,limit_id,limit_name,used_percent,
                  window_minutes,resets_at,plan_type,reached_type,source,authority,extra_json)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    snapshot_id, iso_utc(item.observed_at), item.collector_id, item.limit_id,
+                    item.snapshot_id, iso_utc(item.observed_at), item.collector_id, item.limit_id,
                     item.limit_name, item.used_percent, item.window_minutes,
                     iso_utc(item.resets_at) if item.resets_at else None,
                     item.plan_type, item.reached_type, item.source, item.authority,
